@@ -78,6 +78,28 @@
   --ring: oklch(0.704 0.04 256.788);
 }
 
+.dark {
+  --color-ep-primary: #9cb6ff;
+  --color-ep-primary-container: #3b82f6;
+  --color-ep-on-primary: #00102b;
+  --color-ep-surface: #10131c;
+  --color-ep-surface-lowest: #161a25;
+  --color-ep-surface-low: #1c2030;
+  --color-ep-surface-container: #232838;
+  --color-ep-surface-highest: #2c3142;
+  --color-ep-on-surface: #e6e7ee;
+  --color-ep-on-surface-variant: #a5abc0;
+  --color-ep-outline-variant: #353a4d;
+  --color-ep-secondary: #b6c1d6;
+  --color-ep-secondary-container: #2a3650;
+  --color-ep-on-secondary-container: #c7d4ea;
+  --color-ep-tertiary: #ffb691;
+  --color-ep-tertiary-container: #b34a14;
+  --color-ep-error: #ff8a82;
+  --color-ep-error-container: #5a1414;
+  --color-ep-success: #34d399;
+}
+
 @layer base {
   * { border-color: var(--color-border); }
   body {
@@ -89,6 +111,6 @@
     font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
   .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-  .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
-  .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: var(--color-ep-surface-low); }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--color-ep-outline-variant); border-radius: 10px; }
 }
