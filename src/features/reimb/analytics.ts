@@ -153,6 +153,7 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
   cur.forEach(i => byCatCur.set(i.category, (byCatCur.get(i.category) ?? 0) + i.amount));
   prv.forEach(i => byCatPrv.set(i.category, (byCatPrv.get(i.category) ?? 0) + i.amount));
   let topCat: { cat: string; delta: number; curr: number } | null = null;
+  type CatT = { cat: string; delta: number; curr: number };
   byCatCur.forEach((v, k) => {
     const d = deltaPct(v, byCatPrv.get(k) ?? 0);
     if (v > 0 && (!topCat || d > topCat.delta)) topCat = { cat: k, delta: d, curr: v };
