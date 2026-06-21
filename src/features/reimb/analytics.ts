@@ -152,24 +152,27 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
   const byCatPrv = new Map<string, number>();
   cur.forEach(i => byCatCur.set(i.category, (byCatCur.get(i.category) ?? 0) + i.amount));
   prv.forEach(i => byCatPrv.set(i.category, (byCatPrv.get(i.category) ?? 0) + i.amount));
-  let topCat: { cat: string; delta: number; curr: number } | null = null;
   type CatT = { cat: string; delta: number; curr: number };
+  let topCat: CatT | null = null;
   byCatCur.forEach((v, k) => {
     const d = deltaPct(v, byCatPrv.get(k) ?? 0);
-    if (v > 0 && (!topCat || d > topCat.delta)) topCat = { cat: k, delta: d, curr: v };
+    const cur = topCat;
+    if (v > 0 && (!cur || d > cur.delta)) topCat = { cat: k, delta: d, curr: v };
   });
-  if (topCat && topCat.delta > 20) {
+  const tc: CatT | null = topCat;
+  if (tc && tc.delta > 20) {
     out.push({
-      id: `cat-${topCat.cat}`,
-      severity: topCat.delta > 50 ? "critico" : "atencao",
-      title: `Atenção em "${topCat.cat}"`,
-      body: `Categoria ${topCat.cat} cresceu ${fmtPct(topCat.delta)} no período, totalizando ${fmtBRL(topCat.curr)}.`,
+      id: `cat-${tc.cat}`,
+      severity: tc.delta > 50 ? "critico" : "atencao",
+      title: `Atenção em "${tc.cat}"`,
+      body: `Categoria ${tc.cat} cresceu ${fmtPct(tc.delta)} no período, totalizando ${fmtBRL(tc.curr)}.`,
     });
   }
 
   // Department approval-rate drop
+  type DepT = { dep: string; drop: number; rate: number };
   const deps = new Set([...cur, ...prv].map(i => i.department));
-  let worstDep: { dep: string; drop: number; rate: number } | null = null;
+  let worstDep: DepT | null = null;
   deps.forEach(dep => {
     const c = cur.filter(i => i.department === dep);
     const p = prv.filter(i => i.department === dep);
@@ -179,35 +182,41 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
     const cr = c.filter(i => i.status === "aprovado").length / cd * 100;
     const pr = p.filter(i => i.status === "aprovado").length / pd * 100;
     const drop = pr - cr;
-    if (drop > 5 && (!worstDep || drop > worstDep.drop)) worstDep = { dep, drop, rate: cr };
+    const w = worstDep;
+    if (drop > 5 && (!w || drop > w.drop)) worstDep = { dep, drop, rate: cr };
   });
-  if (worstDep) {
+  const wd: DepT | null = worstDep;
+  if (wd) {
     out.push({
-      id: `dep-${worstDep.dep}`,
+      id: `dep-${wd.dep}`,
       severity: "atencao",
-      title: `Aprovação caiu em ${worstDep.dep}`,
-      body: `Taxa de aprovação caiu ${worstDep.drop.toFixed(1)} pp, agora em ${worstDep.rate.toFixed(0)}%. Vale revisar fluxo do departamento.`,
+      title: `Aprovação caiu em ${wd.dep}`,
+      body: `Taxa de aprovação caiu ${wd.drop.toFixed(1)} pp, agora em ${wd.rate.toFixed(0)}%. Vale revisar fluxo do departamento.`,
     });
   }
 
   // Client jump
+  type CliT = { client: string; delta: number; curr: number };
   const byClientCur = new Map<string, number>();
   const byClientPrv = new Map<string, number>();
   cur.forEach(i => i.client && byClientCur.set(i.client, (byClientCur.get(i.client) ?? 0) + i.amount));
   prv.forEach(i => i.client && byClientPrv.set(i.client, (byClientPrv.get(i.client) ?? 0) + i.amount));
-  let topClient: { client: string; delta: number; curr: number } | null = null;
+  let topClient: CliT | null = null;
   byClientCur.forEach((v, k) => {
     const d = deltaPct(v, byClientPrv.get(k) ?? 0);
-    if (v > 0 && d > 30 && (!topClient || d > topClient.delta)) topClient = { client: k, delta: d, curr: v };
+    const cur2 = topClient;
+    if (v > 0 && d > 30 && (!cur2 || d > cur2.delta)) topClient = { client: k, delta: d, curr: v };
   });
-  if (topClient) {
+  const tcl: CliT | null = topClient;
+  if (tcl) {
     out.push({
-      id: `client-${topClient.client}`,
-      severity: topClient.delta > 80 ? "critico" : "atencao",
-      title: `Cliente em destaque: ${topClient.client}`,
-      body: `Reembolsos vinculados a ${topClient.client} subiram ${fmtPct(topClient.delta)} (${fmtBRL(topClient.curr)}). Verificar contratualização.`,
+      id: `client-${tcl.client}`,
+      severity: tcl.delta > 80 ? "critico" : "atencao",
+      title: `Cliente em destaque: ${tcl.client}`,
+      body: `Reembolsos vinculados a ${tcl.client} subiram ${fmtPct(tcl.delta)} (${fmtBRL(tcl.curr)}). Verificar contratualização.`,
     });
   }
+
 
   return out;
 }
