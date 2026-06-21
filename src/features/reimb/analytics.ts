@@ -156,10 +156,10 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
   let topCat: CatT | null = null;
   byCatCur.forEach((v, k) => {
     const d = deltaPct(v, byCatPrv.get(k) ?? 0);
-    const cur = topCat;
+    const cur = topCat as CatT | null;
     if (v > 0 && (!cur || d > cur.delta)) topCat = { cat: k, delta: d, curr: v };
   });
-  const tc: CatT | null = topCat;
+  const tc = topCat as CatT | null;
   if (tc && tc.delta > 20) {
     out.push({
       id: `cat-${tc.cat}`,
@@ -182,10 +182,10 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
     const cr = c.filter(i => i.status === "aprovado").length / cd * 100;
     const pr = p.filter(i => i.status === "aprovado").length / pd * 100;
     const drop = pr - cr;
-    const w = worstDep;
+    const w = worstDep as DepT | null;
     if (drop > 5 && (!w || drop > w.drop)) worstDep = { dep, drop, rate: cr };
   });
-  const wd: DepT | null = worstDep;
+  const wd = worstDep as DepT | null;
   if (wd) {
     out.push({
       id: `dep-${wd.dep}`,
@@ -204,10 +204,10 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
   let topClient: CliT | null = null;
   byClientCur.forEach((v, k) => {
     const d = deltaPct(v, byClientPrv.get(k) ?? 0);
-    const cur2 = topClient;
+    const cur2 = topClient as CliT | null;
     if (v > 0 && d > 30 && (!cur2 || d > cur2.delta)) topClient = { client: k, delta: d, curr: v };
   });
-  const tcl: CliT | null = topClient;
+  const tcl = topClient as CliT | null;
   if (tcl) {
     out.push({
       id: `client-${tcl.client}`,
