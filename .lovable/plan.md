@@ -1,128 +1,101 @@
+# Plano de entrega — Reembolsos v2
 
-## Visão geral
+Vou entregar tudo em uma única leva, testado, antes de devolver para você. Abaixo o escopo completo e algumas decisões que preciso confirmar.
 
-Reconstruir o app "Reembolsos" para operar com dados reais vindos de uma planilha do Google Sheets (com auto-refresh de 5 em 5 min), com mapeamento configurável de colunas, insights gerados a partir dos dados, filtros e exportação funcionais, comparações personalizadas, notificações reais e dark mode corrigido.
+## O que vai mudar
 
-## 1. Correção do Dark Mode
+### 1. Status correto (Pendente / Realizado)
+- Remover toda a lógica de "Em Aprovação" / "Aprovado" / "Pago".
+- Apenas dois estados:
+  - **Pendente** — reembolso ainda não pago
+  - **Realizado** — reembolso já pago
+- KPI "Taxa de Aprovação" vira **"Taxa de Pagamento"** (% de Realizados / total).
+- Insights recalculados sobre esses dois estados.
 
-- Tailwind v4: configurar `@custom-variant dark (&:where(.dark, .dark *))` em `src/styles.css` e aplicar a classe `dark` no `<html>` (não num div interno) via `useEffect` + `document.documentElement.classList`.
-- Persistir em `localStorage` e respeitar `prefers-color-scheme` no primeiro load.
-- Auditar todas as classes hardcoded (`bg-white`, `text-black`, `bg-gray-*`) e migrar para tokens semânticos (`bg-background`, `text-foreground`, `bg-card`, `border-border`).
+### 2. Suporte a Excel Online (além de Google Sheets)
+- Cole o link do Excel Online (`https://...sharepoint.com/...` ou `onedrive.live.com/...`) **ou** do Google Sheets — o app detecta o tipo pelo domínio.
+- Excel Online usa o conector Microsoft Excel (Microsoft Graph).
+- Mesma UX de mapeamento (escolher aba e qual coluna é Data, Valor, Departamento, Colaborador, Categoria, Status, **Observação**, etc.).
 
-## 2. Integração real com Google Sheets
+> ⚠️ **Decisão importante:** o conector Microsoft Excel se autentica como **uma conta** (a que faz o login). Para funcionar com a planilha da sua empresa, você precisa:
+> - **Opção A (mais simples, recomendada):** uma conta Microsoft de serviço da empresa com acesso ao arquivo, e você conecta essa conta uma vez. Todos no app veem os mesmos dados.
+> - **Opção B (cada usuário entra com a própria conta Microsoft):** exige cadastrar um App no Azure AD, configurar OAuth próprio, e cada usuário faz login. Mais trabalho e demora dias para um admin de TI da sua empresa liberar.
+> Vou seguir com a **Opção A**. Quando você conectar o Microsoft Excel, escolha uma conta que tenha acesso ao arquivo compartilhado.
 
-- Adicionar conector Google Sheets (gateway Lovable). Tela de "Exportar/Importar Dados" passa a ter:
-  - Campo de URL da planilha + botão "Conectar".
-  - Detecção automática de abas (`/spreadsheets/{id}`) e colunas (primeira linha da aba escolhida).
-  - **Tela de mapeamento**: para cada campo canônico do sistema (Data, Valor, Departamento, Colaborador, Cliente, Categoria, Status, Descrição, Comprovante), o usuário escolhe a Aba + Coluna correspondente.
-  - Salvar mapeamento + URL em `localStorage` (`reimbursement_config`).
-- Cliente de leitura usa `values:batchGet` para puxar apenas as colunas mapeadas.
-- **Auto-refresh a cada 5 min** via `setInterval` + `useQuery` com `refetchInterval: 300_000`; indicador "Última atualização: hh:mm".
-- Botão "Atualizar agora" para forçar refetch.
-- Estado vazio quando ainda não conectado: instruções e exemplo de planilha.
+### 3. Persistência no banco (não some mais)
+- Ativar **Lovable Cloud**.
+- Tabela `sheet_config` (linha única, global) armazena: URL da planilha, tipo (`google` ou `excel`), aba escolhida, mapeamento de colunas, timestamp da última sincronização.
+- Tabela `reimbursement_cache` guarda as linhas normalizadas da última sincronização. Todos os dispositivos leem da mesma fonte.
+- Job de refresh a cada 5 minutos: server function `refreshReimbursements` busca a planilha via conector, normaliza e regrava o cache. Disparada de duas formas:
+  - **Cron externo** (URL pública `/api/public/sync-reimb`) — para garantir 5/5 min mesmo sem ninguém aberto.
+  - **No cliente** quando algum dispositivo está aberto (`refetchInterval: 5 min`) — chama a mesma server function.
+- Configuração sobrevive a reload, troca de dispositivo, deploy.
 
-## 3. Modelo de dados normalizado
+### 4. Histórico do funcionário
+- Clicar em uma linha de "Últimas Solicitações" abre um painel com:
+  - Nome, departamento, total reembolsado, último status
+  - Histórico completo (data, valor, categoria, status, **observação** lida da coluna mapeada)
+  - Tendência mensal em mini-gráfico
+- Mesma UX em mobile (bottom sheet) e desktop (modal lateral).
 
-Após ler a planilha, converter para:
-```ts
-type Reimbursement = {
-  date: Date; amount: number; department: string;
-  employee: string; client?: string; category: string;
-  status: 'aprovado'|'rejeitado'|'pendente'; description?: string;
-}
-```
-Todos os KPIs, gráficos, ranking e modais passam a derivar dessa lista (sem mocks).
+### 5. PWA
+- `public/manifest.webmanifest` (nome, ícones, theme color, `display: standalone`).
+- Ícones 192/512 gerados.
+- Tags no `<head>` para iOS/Android.
+- **Sem service worker para offline** (você não pediu) — apenas instalação na tela inicial.
 
-## 4. Insights Executivos reais e personalizados
+### 6. Mobile responsivo (design dos mocks)
+- Breakpoint `< 768px`: layout móvel novo seguindo os HTMLs anexados — top bar fixa, KPIs em grid 2×2 com sparklines, donut de categorias, insights com `glass-panel`, lista de transações em cards arredondados, **bottom nav fixa** com 4 ícones (Dashboard, Reembolsos, Analytics, Exportação).
+- Breakpoint `≥ 768px`: mantém o sidebar lateral atual.
+- Tokens semânticos (`bg-background`, `text-foreground`, etc.) para o dark mode funcionar nos dois layouts.
+- Bottom sheet (Drawer) para mobile, modal para desktop.
 
-Calculados em tempo real:
-- Variação % do total reembolsado vs. período anterior equivalente.
-- Categoria/benefício com maior crescimento (alerta de atenção).
-- Departamento com queda na taxa de aprovação.
-- **Cliente em destaque**: cliente com salto >30% de reembolso no período selecionado → insight de atenção com nome, valor e variação.
-- Tempo médio de aprovação em alta/baixa.
-- Cada insight tem severidade (positivo/atenção/crítico), título, descrição e período de referência.
+### 7. Bug do dark mode (hydration)
+- O `<ThemeToggle>` está renderizando ícone diferente no servidor vs cliente. Resolver com `useState(false)` + `useEffect` para só montar o ícone após mount (evita mismatch).
 
-## 5. Filtros e comparação personalizada
+### 8. Compatibilidade Vercel
+- Stack atual (TanStack Start + Vite) já é compatível.
+- `/api/public/sync-reimb` como server route (sem auth) para o cron externo.
+- Variáveis lidas via `process.env` no server, `import.meta.env` no client.
+- Vou validar `bun run build` antes de devolver.
 
-- Barra de filtros global: período, departamento, categoria, cliente, status.
-- Filtros realmente aplicados a KPIs, gráficos e tabelas.
-- **Comparações pré-definidas + personalizada**:
-  - Esta semana vs. semana anterior
-  - Este mês vs. mês anterior
-  - Este mês vs. mesmo mês do ano passado
-  - Últimos 30/90 dias vs. período anterior equivalente
-  - Personalizado: o usuário escolhe dois intervalos de datas
-- KPIs mostram delta % e seta ↑/↓ baseados na comparação ativa.
-
-## 6. Exportação funcional
-
-- Botões "Exportar CSV" e "Exportar JSON" baixam os dados filtrados (Blob + `URL.createObjectURL`).
-- "Exportar relatório PDF" simples via `window.print()` com CSS de impressão dedicada.
-- Histórico de exportações em `localStorage`.
-
-## 7. Notificações reais
-
-Geradas a partir dos dados:
-- Novos reembolsos pendentes (>24h sem aprovação).
-- Reembolsos rejeitados na última semana.
-- Alertas de variação anômala por cliente/departamento.
-- Falha na sincronização da planilha.
-
-Badge com contador real e dropdown com lista clicável (filtra a tabela).
-
-## 8. Modal de departamento
-
-Reaproveitar dados reais filtrados pelo departamento clicado: KPIs, série mensal, distribuição por categoria, top 5 colaboradores, top clientes.
-
-## 9. Estrutura técnica
+## Arquitetura técnica
 
 ```
-src/
-  routes/
-    __root.tsx
-    index.tsx                  # shell + tabs
-  features/reimbursements/
-    types.ts                   # Reimbursement, Mapping, Insight
-    config-store.ts            # localStorage para URL + mapeamento + tema
-    sheets-client.ts           # fetch via gateway Google Sheets
-    normalize.ts               # linhas brutas -> Reimbursement[]
-    analytics.ts               # KPIs, agrupamentos, comparações
-    insights.ts                # geração de insights
-    notifications.ts           # geração de notificações
-    components/
-      FiltersBar.tsx
-      ComparisonPicker.tsx
-      KpiCard.tsx
-      MonthlyChart.tsx
-      CategoryDonut.tsx
-      DepartmentRanking.tsx
-      DepartmentModal.tsx
-      InsightsPanel.tsx
-      NotificationsDropdown.tsx
-      TransactionsTable.tsx
-      ExportPanel.tsx
-      ConnectSheetPanel.tsx
-      MappingWizard.tsx
-      ThemeToggle.tsx
+DB (Lovable Cloud)
+├── sheet_config         (1 linha global: url, type, mapping, last_sync)
+└── reimbursement_cache  (linhas normalizadas: date, amount, dept, employee, …, observacao)
+
+Server functions (src/lib/*.functions.ts)
+├── getSheetConfig
+├── saveSheetConfig      (URL + mapping)
+├── getReimbursements    (lê do cache)
+├── refreshReimbursements (busca conector → normaliza → grava cache)
+└── getSheetMeta         (detecta google/excel, retorna abas+headers para o wizard)
+
+Server routes (src/routes/api/public/)
+└── sync-reimb.ts        (chama refreshReimbursements; protegido por SYNC_SECRET)
+
+Connectors
+├── google_sheets        (já conectado)
+└── microsoft_excel      (vou pedir para conectar)
 ```
 
-## 10. Testes manuais antes de entregar
+## Testes que vou rodar antes de entregar
 
-- Conectar conta Google Sheets de demo, mapear colunas, validar que KPIs batem com a planilha.
-- Trocar de tema claro/escuro em todas as telas (incluindo modais).
-- Aplicar filtros e cada modo de comparação; conferir deltas.
-- Forçar refetch e aguardar 5 min para validar auto-refresh.
-- Exportar CSV/JSON e abrir os arquivos.
-- Disparar notificação (ex.: planilha com reembolso pendente antigo).
+1. Conectar Google Sheet → mapear colunas (com Observação) → ver KPIs e gráficos.
+2. Conectar Excel Online → mapear → mesmo resultado.
+3. Fechar e reabrir em outro navegador → configuração persiste, dados carregam do BD.
+4. Forçar refresh manual e esperar o ciclo de 5 min.
+5. Clicar em transação → ver histórico + observação.
+6. Toggle dark/light → sem hydration mismatch, sem flicker.
+7. Mobile (375px) → layout dos mocks. Desktop (1440px) → layout sidebar atual.
+8. Instalar como PWA no celular.
+9. `bun run build` passa.
 
-## Detalhes técnicos
+## Confirme antes de eu começar
 
-- Conector: `standard_connectors--connect` com `google_sheets`. Endpoints: `/spreadsheets/{id}` (metadata/abas) e `/spreadsheets/{id}/values:batchGet?ranges=...`.
-- Toda a leitura via server function `getSheetData` em `src/lib/sheets.functions.ts` para não expor `LOVABLE_API_KEY` no client; client usa `useServerFn` + `useQuery({ refetchInterval: 300_000 })`.
-- Configuração (URL + mapeamento + comparação ativa + tema) em `localStorage` — sem necessidade de DB.
-- Dark mode com `document.documentElement.classList.toggle('dark', ...)`.
+1. **Conta Microsoft para o conector Excel:** OK seguir com **Opção A** (uma conta corporativa de serviço conecta uma vez, vale para todos)?
+2. **Cron de 5 min:** OK eu usar um endpoint público `/api/public/sync-reimb` protegido por um segredo que você configura num cron externo (cron-job.org grátis), **OU** você prefere que o refresh aconteça só quando alguém abrir o app (sem cron externo)?
 
-## Pergunta para confirmar antes de implementar
-
-Você quer usar a conexão Google Sheets gerenciada pela Lovable (uma conta Google compartilhada que você autoriza uma vez) ou prefere que cada usuário final faça login com a própria conta Google (requer OAuth próprio — mais setup)? Para o caso de uso descrito, a primeira opção é suficiente e muito mais rápida.
+Responda essas duas e eu sigo executando até o fim.
