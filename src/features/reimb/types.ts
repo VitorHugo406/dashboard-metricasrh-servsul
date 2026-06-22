@@ -1,4 +1,6 @@
-export type ReimbStatus = "aprovado" | "rejeitado" | "pendente";
+export type ReimbStatus = "pendente" | "realizado";
+
+export type SourceType = "google" | "excel";
 
 export type Reimbursement = {
   id: string;
@@ -10,6 +12,7 @@ export type Reimbursement = {
   category: string;
   status: ReimbStatus;
   description: string;
+  observacao: string;
   submittedAt?: Date;
 };
 
@@ -20,30 +23,28 @@ export const CANONICAL_FIELDS = [
   { key: "employee", label: "Colaborador", required: true },
   { key: "client", label: "Cliente", required: false },
   { key: "category", label: "Categoria/Benefício", required: true },
-  { key: "status", label: "Status", required: true },
+  { key: "status", label: "Status (Pendente / Realizado)", required: true },
   { key: "description", label: "Descrição", required: false },
+  { key: "observacao", label: "Observação", required: false },
   { key: "submittedAt", label: "Data de envio", required: false },
 ] as const;
 
 export type FieldKey = typeof CANONICAL_FIELDS[number]["key"];
 
-export type Mapping = Partial<Record<FieldKey, string>>; // canonical -> spreadsheet column header
+export type Mapping = Partial<Record<FieldKey, string>>;
 
 export type Config = {
+  sourceType?: SourceType;
   spreadsheetId?: string;
   spreadsheetUrl?: string;
   spreadsheetTitle?: string;
   sheet?: string;
   mapping?: Mapping;
+  lastSyncAt?: string;
+  lastSyncError?: string | null;
 };
 
-export type ComparisonMode =
-  | "wow" // week vs prev week
-  | "mom" // month vs prev month
-  | "yoy" // this month vs same month last year
-  | "30d"
-  | "90d"
-  | "custom";
+export type ComparisonMode = "wow" | "mom" | "yoy" | "30d" | "90d" | "custom";
 
 export type DateRange = { from: Date; to: Date };
 
@@ -54,4 +55,13 @@ export type Filters = {
   client?: string;
   status?: ReimbStatus;
   search?: string;
+};
+
+export type SheetMeta = {
+  sourceType: SourceType;
+  spreadsheetId: string;
+  title: string;
+  sheets: { id: string | number; title: string; headers: string[] }[];
+  excelDriveId?: string;
+  excelItemId?: string;
 };

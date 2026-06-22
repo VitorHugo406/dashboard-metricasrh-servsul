@@ -14,7 +14,102 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      reimbursement_cache: {
+        Row: {
+          amount: number
+          category: string
+          client: string | null
+          date: string
+          department: string
+          description: string | null
+          employee: string
+          id: string
+          observacao: string | null
+          raw: Json | null
+          status: string
+          submitted_at: string | null
+          synced_at: string
+        }
+        Insert: {
+          amount?: number
+          category?: string
+          client?: string | null
+          date: string
+          department?: string
+          description?: string | null
+          employee?: string
+          id: string
+          observacao?: string | null
+          raw?: Json | null
+          status: string
+          submitted_at?: string | null
+          synced_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          client?: string | null
+          date?: string
+          department?: string
+          description?: string | null
+          employee?: string
+          id?: string
+          observacao?: string | null
+          raw?: Json | null
+          status?: string
+          submitted_at?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      sheet_config: {
+        Row: {
+          created_at: string
+          excel_drive_id: string | null
+          excel_item_id: string | null
+          id: boolean
+          last_sync_at: string | null
+          last_sync_error: string | null
+          mapping: Json
+          sheet_name: string
+          source_type: string
+          spreadsheet_id: string
+          spreadsheet_title: string | null
+          spreadsheet_url: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          excel_drive_id?: string | null
+          excel_item_id?: string | null
+          id?: boolean
+          last_sync_at?: string | null
+          last_sync_error?: string | null
+          mapping?: Json
+          sheet_name: string
+          source_type: string
+          spreadsheet_id: string
+          spreadsheet_title?: string | null
+          spreadsheet_url: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          excel_drive_id?: string | null
+          excel_item_id?: string | null
+          id?: boolean
+          last_sync_at?: string | null
+          last_sync_error?: string | null
+          mapping?: Json
+          sheet_name?: string
+          source_type?: string
+          spreadsheet_id?: string
+          spreadsheet_title?: string | null
+          spreadsheet_url?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

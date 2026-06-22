@@ -63,7 +63,7 @@ export function applyFilters(items: Reimbursement[], f: Filters): Reimbursement[
     if (f.status && i.status !== f.status) return false;
     if (f.search) {
       const s = f.search.toLowerCase();
-      const hay = `${i.employee} ${i.department} ${i.category} ${i.client} ${i.description}`.toLowerCase();
+      const hay = `${i.employee} ${i.department} ${i.category} ${i.client} ${i.description} ${i.observacao}`.toLowerCase();
       if (!hay.includes(s)) return false;
     }
     return true;
@@ -71,23 +71,20 @@ export function applyFilters(items: Reimbursement[], f: Filters): Reimbursement[
 }
 
 export type Kpis = {
-  total: number; count: number; approved: number; rejected: number; pending: number;
-  approvalRate: number; avgAmount: number; avgApprovalDays: number;
+  total: number; totalPaid: number; totalPending: number;
+  count: number; realizado: number; pendente: number;
+  paymentRate: number; avgAmount: number;
 };
 
 export function computeKpis(items: Reimbursement[]): Kpis {
   const total = items.reduce((s, i) => s + i.amount, 0);
-  const approved = items.filter(i => i.status === "aprovado").length;
-  const rejected = items.filter(i => i.status === "rejeitado").length;
-  const pending = items.filter(i => i.status === "pendente").length;
-  const decided = approved + rejected;
-  const approvalRate = decided ? (approved / decided) * 100 : 0;
+  const totalPaid = items.filter(i => i.status === "realizado").reduce((s, i) => s + i.amount, 0);
+  const totalPending = items.filter(i => i.status === "pendente").reduce((s, i) => s + i.amount, 0);
+  const realizado = items.filter(i => i.status === "realizado").length;
+  const pendente = items.filter(i => i.status === "pendente").length;
+  const paymentRate = items.length ? (realizado / items.length) * 100 : 0;
   const avgAmount = items.length ? total / items.length : 0;
-  const approvedWithDates = items.filter(i => i.status === "aprovado" && i.submittedAt);
-  const avgApprovalDays = approvedWithDates.length
-    ? approvedWithDates.reduce((s, i) => s + (i.date.getTime() - (i.submittedAt!.getTime())) / 86400000, 0) / approvedWithDates.length
-    : 0;
-  return { total, count: items.length, approved, rejected, pending, approvalRate, avgAmount, avgApprovalDays };
+  return { total, totalPaid, totalPending, count: items.length, realizado, pendente, paymentRate, avgAmount };
 }
 
 export function deltaPct(curr: number, prev: number): number {
@@ -95,16 +92,16 @@ export function deltaPct(curr: number, prev: number): number {
   return ((curr - prev) / prev) * 100;
 }
 
-export function groupByMonth(items: Reimbursement[]): { label: string; total: number; approved: number; rejected: number; count: number }[] {
-  const map = new Map<string, { label: string; total: number; approved: number; rejected: number; count: number; sortKey: number }>();
+export function groupByMonth(items: Reimbursement[]): { label: string; total: number; realizado: number; pendente: number; count: number }[] {
+  const map = new Map<string, { label: string; total: number; realizado: number; pendente: number; count: number; sortKey: number }>();
   items.forEach(i => {
     const k = `${i.date.getFullYear()}-${String(i.date.getMonth()+1).padStart(2,"0")}`;
     const label = i.date.toLocaleDateString("pt-BR", { month: "short" }).replace(".","").toUpperCase();
-    if (!map.has(k)) map.set(k, { label, total: 0, approved: 0, rejected: 0, count: 0, sortKey: i.date.getFullYear()*100 + i.date.getMonth() });
+    if (!map.has(k)) map.set(k, { label, total: 0, realizado: 0, pendente: 0, count: 0, sortKey: i.date.getFullYear()*100 + i.date.getMonth() });
     const g = map.get(k)!;
     g.total += i.amount; g.count++;
-    if (i.status === "aprovado") g.approved += i.amount;
-    if (i.status === "rejeitado") g.rejected += i.amount;
+    if (i.status === "realizado") g.realizado += i.amount;
+    else g.pendente += i.amount;
   });
   return [...map.values()].sort((a,b) => a.sortKey - b.sortKey);
 }
@@ -128,7 +125,6 @@ export type Insight = {
   severity: "positivo" | "atencao" | "critico" | "info";
   title: string;
   body: string;
-  ref?: string;
 };
 
 export function generateInsights(all: Reimbursement[], current: DateRange, previous: DateRange, label: string): Insight[] {
@@ -147,6 +143,19 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
     body: `${fmtBRL(curTotal)} no período (${label.toLowerCase()}). Variação ${fmtPct(totalDelta)} vs. período anterior (${fmtBRL(prvTotal)}).`,
   });
 
+  // Payment rate movement
+  const curK = computeKpis(cur);
+  const prvK = computeKpis(prv);
+  if (cur.length >= 5 && prv.length >= 5) {
+    const rateDelta = curK.paymentRate - prvK.paymentRate;
+    out.push({
+      id: "payment-rate",
+      severity: rateDelta < -10 ? "atencao" : rateDelta > 10 ? "positivo" : "info",
+      title: rateDelta >= 0 ? "Taxa de pagamento melhorou" : "Taxa de pagamento caiu",
+      body: `Reembolsos realizados: ${curK.paymentRate.toFixed(0)}% (vs. ${prvK.paymentRate.toFixed(0)}% no período anterior). Pendentes acumulam ${fmtBRL(curK.totalPending)}.`,
+    });
+  }
+
   // Category jumps
   const byCatCur = new Map<string, number>();
   const byCatPrv = new Map<string, number>();
@@ -156,8 +165,8 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
   let topCat: CatT | null = null;
   byCatCur.forEach((v, k) => {
     const d = deltaPct(v, byCatPrv.get(k) ?? 0);
-    const cur = topCat as CatT | null;
-    if (v > 0 && (!cur || d > cur.delta)) topCat = { cat: k, delta: d, curr: v };
+    const cur2 = topCat as CatT | null;
+    if (v > 0 && (!cur2 || d > cur2.delta)) topCat = { cat: k, delta: d, curr: v };
   });
   const tc = topCat as CatT | null;
   if (tc && tc.delta > 20) {
@@ -169,29 +178,21 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
     });
   }
 
-  // Department approval-rate drop
-  type DepT = { dep: string; drop: number; rate: number };
-  const deps = new Set([...cur, ...prv].map(i => i.department));
-  let worstDep: DepT | null = null;
-  deps.forEach(dep => {
-    const c = cur.filter(i => i.department === dep);
-    const p = prv.filter(i => i.department === dep);
-    const cd = c.filter(i => i.status !== "pendente").length;
-    const pd = p.filter(i => i.status !== "pendente").length;
-    if (cd < 3 || pd < 3) return;
-    const cr = c.filter(i => i.status === "aprovado").length / cd * 100;
-    const pr = p.filter(i => i.status === "aprovado").length / pd * 100;
-    const drop = pr - cr;
-    const w = worstDep as DepT | null;
-    if (drop > 5 && (!w || drop > w.drop)) worstDep = { dep, drop, rate: cr };
+  // Department: highest pendente backlog
+  const deptPending = new Map<string, number>();
+  cur.filter(i => i.status === "pendente").forEach(i => deptPending.set(i.department, (deptPending.get(i.department) ?? 0) + i.amount));
+  let worstDept: { dep: string; total: number } | null = null;
+  deptPending.forEach((v, k) => {
+    const w = worstDept;
+    if (!w || v > w.total) worstDept = { dep: k, total: v };
   });
-  const wd = worstDep as DepT | null;
-  if (wd) {
+  const wd = worstDept as { dep: string; total: number } | null;
+  if (wd && wd.total > 0) {
     out.push({
-      id: `dep-${wd.dep}`,
+      id: `dep-pend-${wd.dep}`,
       severity: "atencao",
-      title: `Aprovação caiu em ${wd.dep}`,
-      body: `Taxa de aprovação caiu ${wd.drop.toFixed(1)} pp, agora em ${wd.rate.toFixed(0)}%. Vale revisar fluxo do departamento.`,
+      title: `Pendências em ${wd.dep}`,
+      body: `${fmtBRL(wd.total)} em reembolsos pendentes neste departamento no período. Vale priorizar liquidação.`,
     });
   }
 
@@ -217,7 +218,6 @@ export function generateInsights(all: Reimbursement[], current: DateRange, previ
     });
   }
 
-
   return out;
 }
 
@@ -232,7 +232,7 @@ export type Notification = {
 export function generateNotifications(all: Reimbursement[]): Notification[] {
   const now = new Date();
   const out: Notification[] = [];
-  const oldPending = all.filter(i => i.status === "pendente" && (now.getTime() - i.date.getTime()) > 86400000);
+  const oldPending = all.filter(i => i.status === "pendente" && (now.getTime() - i.date.getTime()) > 24 * 3600_000);
   if (oldPending.length) {
     out.push({
       id: "pending-old",
@@ -243,13 +243,13 @@ export function generateNotifications(all: Reimbursement[]): Notification[] {
     });
   }
   const weekAgo = addDays(now, -7);
-  const recentRejected = all.filter(i => i.status === "rejeitado" && i.date >= weekAgo);
-  if (recentRejected.length >= 3) {
+  const recentPaid = all.filter(i => i.status === "realizado" && i.date >= weekAgo);
+  if (recentPaid.length) {
     out.push({
-      id: "rejected-week",
-      severity: "atencao",
-      title: `${recentRejected.length} rejeições na última semana`,
-      body: `Valor: ${fmtBRL(recentRejected.reduce((s,i)=>s+i.amount,0))}. Considere revisar política.`,
+      id: "paid-week",
+      severity: "info",
+      title: `${recentPaid.length} reembolso(s) realizados nos últimos 7 dias`,
+      body: `Valor liquidado: ${fmtBRL(recentPaid.reduce((s,i)=>s+i.amount,0))}.`,
       at: now,
     });
   }
@@ -257,11 +257,11 @@ export function generateNotifications(all: Reimbursement[]): Notification[] {
 }
 
 export function toCSV(items: Reimbursement[]): string {
-  const cols = ["date","amount","department","employee","client","category","status","description"];
+  const cols = ["date","amount","department","employee","client","category","status","description","observacao"];
   const lines = [cols.join(",")];
   items.forEach(i => {
     lines.push(cols.map(c => {
-      const v = (i as any)[c];
+      const v = (i as Record<string, unknown>)[c];
       const s = v instanceof Date ? v.toISOString().slice(0,10) : String(v ?? "");
       return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
     }).join(","));
