@@ -1,11 +1,21 @@
 import type { Mapping, Reimbursement, ReimbStatus } from "./types";
 
-function parseDate(s: string): Date | null {
-  if (!s) return null;
-  const t = s.trim();
-  // Try ISO first
-  const iso = new Date(t);
-  if (!isNaN(iso.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(t)) return iso;
+export function parseDate(s: string | null | undefined): Date | null {
+  if (s == null) return null;
+  const t = String(s).trim();
+  if (!t) return null;
+  // Excel serial number
+  if (/^\d{4,6}(\.\d+)?$/.test(t)) {
+    const n = Number(t);
+    // Excel epoch 1899-12-30
+    const dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+    if (!isNaN(dt.getTime())) return dt;
+  }
+  // ISO yyyy-mm-dd[...]
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
+    const iso = new Date(t);
+    if (!isNaN(iso.getTime())) return iso;
+  }
   // dd/mm/yyyy or dd-mm-yyyy
   const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
   if (m) {
@@ -14,26 +24,34 @@ function parseDate(s: string): Date | null {
     const dt = new Date(year, Number(mo) - 1, Number(d));
     if (!isNaN(dt.getTime())) return dt;
   }
-  if (!isNaN(iso.getTime())) return iso;
+  const fallback = new Date(t);
+  if (!isNaN(fallback.getTime())) return fallback;
   return null;
 }
 
-function parseAmount(s: string): number {
-  if (!s) return 0;
-  const cleaned = s.replace(/[^\d,.\-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+export function parseAmount(s: string | null | undefined): number {
+  if (s == null) return 0;
+  const raw = String(s).trim();
+  if (!raw) return 0;
+  // Brazilian format: 1.234,56 -> 1234.56
+  let cleaned = raw.replace(/[^\d,.\-]/g, "");
+  if (cleaned.indexOf(",") > -1) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  }
   const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
 }
 
-function parseStatus(s: string): ReimbStatus {
-  const v = (s || "").toLowerCase().trim();
-  if (/aprov|pago|approved|paid/.test(v)) return "aprovado";
-  if (/rejei|recus|reject|denied/.test(v)) return "rejeitado";
+export function parseStatus(s: string | null | undefined): ReimbStatus {
+  const v = String(s ?? "").toLowerCase().trim();
+  // "Realizado" = paid out
+  if (/realiz|pago|paid|conclu[ií]d|efetuad|liquidad|finaliz/.test(v)) return "realizado";
+  // default = pendente
   return "pendente";
 }
 
 export function normalize(headers: string[], rows: string[][], mapping: Mapping): Reimbursement[] {
-  const idx = (key?: string) => key ? headers.indexOf(key) : -1;
+  const idx = (key?: string) => (key ? headers.indexOf(key) : -1);
   const i = {
     date: idx(mapping.date),
     amount: idx(mapping.amount),
@@ -43,24 +61,26 @@ export function normalize(headers: string[], rows: string[][], mapping: Mapping)
     category: idx(mapping.category),
     status: idx(mapping.status),
     description: idx(mapping.description),
+    observacao: idx(mapping.observacao),
     submittedAt: idx(mapping.submittedAt),
   };
+  const get = (r: string[], k: number) => (k >= 0 ? r[k] ?? "" : "");
   const out: Reimbursement[] = [];
   rows.forEach((r, n) => {
-    const date = i.date >= 0 ? parseDate(r[i.date] ?? "") : null;
+    const date = parseDate(get(r, i.date));
     if (!date) return;
-    const amount = i.amount >= 0 ? parseAmount(r[i.amount] ?? "") : 0;
     out.push({
-      id: `${n}-${date.getTime()}`,
+      id: `r-${n}-${date.getTime()}`,
       date,
-      amount,
-      department: (i.department >= 0 ? r[i.department] : "") || "—",
-      employee: (i.employee >= 0 ? r[i.employee] : "") || "—",
-      client: (i.client >= 0 ? r[i.client] : "") || "",
-      category: (i.category >= 0 ? r[i.category] : "") || "Outros",
-      status: parseStatus(i.status >= 0 ? r[i.status] : ""),
-      description: (i.description >= 0 ? r[i.description] : "") || "",
-      submittedAt: i.submittedAt >= 0 ? (parseDate(r[i.submittedAt] ?? "") ?? undefined) : undefined,
+      amount: parseAmount(get(r, i.amount)),
+      department: get(r, i.department) || "—",
+      employee: get(r, i.employee) || "—",
+      client: get(r, i.client) || "",
+      category: get(r, i.category) || "Outros",
+      status: parseStatus(get(r, i.status)),
+      description: get(r, i.description) || "",
+      observacao: get(r, i.observacao) || "",
+      submittedAt: parseDate(get(r, i.submittedAt)) ?? undefined,
     });
   });
   return out;
