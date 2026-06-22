@@ -161,7 +161,7 @@ function DesktopTopbar({ items, lastSync, refetching, onRefresh, dark, setDark, 
       </div>
       <div className="flex items-center gap-3">
         <button onClick={() => setDark(!dark)} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-ep-surface-low" aria-label="Trocar tema">
-          <Icon name="dark_mode" suppressHydrationWarning />
+          <Icon name="dark_mode" />
           {themeMounted && <span className="sr-only">{dark ? "Modo claro" : "Modo escuro"}</span>}
         </button>
         <div className="relative">
@@ -218,7 +218,7 @@ function MobileTopbar({ dark, setDark, themeMounted }: { dark: boolean; setDark:
         <h1 className="text-base font-semibold tracking-tight">Reembolsos</h1>
       </div>
       <button onClick={() => setDark(!dark)} className="w-10 h-10 flex items-center justify-center text-ep-on-surface-variant" aria-label="Trocar tema">
-        <Icon name="dark_mode" suppressHydrationWarning />
+        <Icon name="dark_mode" />
         {themeMounted && <span className="sr-only">{dark ? "claro" : "escuro"}</span>}
       </button>
     </header>
