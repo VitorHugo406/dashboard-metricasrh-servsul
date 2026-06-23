@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { getSheetConfigFn, saveSheetConfigFn, refreshReimbursementsFn, probeSheetFn, rowsToReimbursements, type RawReimbursementRow } from "@/lib/reimb.functions";
+
+import { getSheetConfigFn, saveSheetConfigFn, refreshReimbursementsFn, probeSheetFn, rowsToReimbursements, getReimbursementCacheFn, type RawReimbursementRow } from "@/lib/reimb.functions";
 import {
   CANONICAL_FIELDS,
   type ComparisonMode, type Config, type DateRange, type Filters,
@@ -43,17 +43,13 @@ function App() {
   const cfgQuery = useQuery({ queryKey: ["sheet-config"], queryFn: () => getConfig() });
   const config: Config = cfgQuery.data ?? {};
 
-  // Reimbursements from cache table (anon SELECT)
+  // Reimbursements from cache (read via secure server fn — table is locked down at the DB)
+  const getCache = useServerFn(getReimbursementCacheFn);
   const itemsQuery = useQuery({
     queryKey: ["reimb-cache"],
     queryFn: async (): Promise<Reimbursement[]> => {
-      const { data, error } = await supabase
-        .from("reimbursement_cache")
-        .select("id, date, amount, department, employee, client, category, status, description, observacao, submitted_at")
-        .order("date", { ascending: false })
-        .limit(10000);
-      if (error) throw new Error(error.message);
-      return rowsToReimbursements((data ?? []) as RawReimbursementRow[]);
+      const rows = await getCache();
+      return rowsToReimbursements(rows as RawReimbursementRow[]);
     },
     refetchInterval: 60_000, // poll the cache every minute; cache itself refreshes every 5 min via sync route
     refetchOnWindowFocus: true,
@@ -69,20 +65,6 @@ function App() {
     const id = setInterval(tick, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [config.spreadsheetId, refresh, qc]);
-
-  // Realtime: react instantly when another device pushes a refresh
-  useEffect(() => {
-    const ch = supabase
-      .channel("reimb-cache-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursement_cache" }, () => {
-        qc.invalidateQueries({ queryKey: ["reimb-cache"] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "sheet_config" }, () => {
-        qc.invalidateQueries({ queryKey: ["sheet-config"] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [qc]);
 
   const items = itemsQuery.data ?? [];
   const connected = !!config.spreadsheetId;

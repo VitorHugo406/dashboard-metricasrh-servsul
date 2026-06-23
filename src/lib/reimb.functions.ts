@@ -107,6 +107,18 @@ export const probeSheetFn = createServerFn({ method: "POST" })
     return getSpreadsheetMeta({ data: { url: data.url } });
   });
 
+export const getReimbursementCacheFn = createServerFn({ method: "GET" })
+  .handler(async (): Promise<RawReimbursementRow[]> => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("reimbursement_cache")
+      .select("id, date, amount, department, employee, client, category, status, description, observacao, submitted_at")
+      .order("date", { ascending: false })
+      .limit(10000);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as RawReimbursementRow[];
+  });
+
 export type RawReimbursementRow = {
   id: string; date: string; amount: number; department: string; employee: string;
   client: string | null; category: string; status: "pendente" | "realizado";
