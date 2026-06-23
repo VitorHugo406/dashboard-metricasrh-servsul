@@ -75,51 +75,57 @@ async function googleRows(spreadsheetId: string, sheet: string): Promise<string[
 }
 
 /* ---------------- Excel ---------------- */
-async function excelMeta(url: string): Promise<SheetMeta> {
+// Personal Microsoft (MSA) accounts return:
+//   "This API is not supported for MSA accounts (no addressUrl for Microsoft.Excel,False)"
+// for the workbook/worksheets endpoint. We sidestep the workbook API entirely and
+// download the .xlsx file, then parse with the `xlsx` library — works for OneDrive
+// Personal, OneDrive for Business, and SharePoint shared links alike.
+
+type WorkbookCache = { name: string; sheets: Record<string, string[][]>; fetchedAt: number };
+const _wbCache = new Map<string, WorkbookCache>();
+const WB_TTL_MS = 60_000; // dedupe within 1 min for meta+rows on the same URL
+
+async function downloadAndParseExcel(url: string): Promise<WorkbookCache> {
+  const cached = _wbCache.get(url);
+  if (cached && Date.now() - cached.fetchedAt < WB_TTL_MS) return cached;
   const shareId = encodeShareUrl(url);
   const headers = excelHeaders();
-  // Resolve drive item
-  const itemRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem?$select=id,name,parentReference`, { headers });
-  if (!itemRes.ok) throw new Error(`Excel item (${itemRes.status}): ${await itemRes.text()}`);
-  const item = await itemRes.json() as { id: string; name: string; parentReference?: { driveId?: string } };
-  // List worksheets
-  const wsRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/workbook/worksheets?$select=id,name`, { headers });
-  if (!wsRes.ok) throw new Error(`Excel worksheets (${wsRes.status}): ${await wsRes.text()}`);
-  const wsJson = await wsRes.json() as { value: Array<{ id: string; name: string }> };
-  // Fetch first row of each worksheet (headers)
-  const sheets = await Promise.all(wsJson.value.map(async ws => {
-    const escName = ws.name.replace(/'/g, "''");
-    const rangeRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/workbook/worksheets('${encodeURIComponent(escName)}')/range(address='A1:Z1')?$select=values`, { headers });
-    let headerRow: string[] = [];
-    if (rangeRes.ok) {
-      const j = await rangeRes.json() as { values?: unknown[][] };
-      headerRow = (j.values?.[0] ?? []).map(v => String(v ?? "")).filter(h => h !== "");
-    }
-    return { id: ws.id, title: ws.name, headers: headerRow };
+  let name = "workbook";
+  try {
+    const itemRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem?$select=id,name`, { headers });
+    if (itemRes.ok) { const j = await itemRes.json() as { name?: string }; name = j.name ?? name; }
+  } catch { /* non-fatal */ }
+  const dlRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/content`, { headers, redirect: "follow" });
+  if (!dlRes.ok) throw new Error(`Excel download (${dlRes.status}): ${await dlRes.text()}`);
+  const buf = new Uint8Array(await dlRes.arrayBuffer());
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(buf, { type: "array" });
+  const sheets: Record<string, string[][]> = {};
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "" });
+    sheets[sheetName] = rows.map(r => (r as unknown[]).map(c => (c == null ? "" : String(c))));
+  }
+  const entry: WorkbookCache = { name, sheets, fetchedAt: Date.now() };
+  _wbCache.set(url, entry);
+  return entry;
+}
+
+async function excelMeta(url: string): Promise<SheetMeta> {
+  const { name, sheets } = await downloadAndParseExcel(url);
+  const sheetMetas = Object.entries(sheets).map(([title, rows], idx) => ({
+    id: idx,
+    title,
+    headers: (rows[0] ?? []).map(String).filter(h => h !== ""),
   }));
-  return {
-    sourceType: "excel",
-    spreadsheetId: item.id,
-    title: item.name,
-    sheets,
-    excelDriveId: item.parentReference?.driveId,
-    excelItemId: item.id,
-  };
+  return { sourceType: "excel", spreadsheetId: url, title: name, sheets: sheetMetas };
 }
 
 async function excelRows(url: string, sheet: string): Promise<string[][]> {
-  const shareId = encodeShareUrl(url);
-  const headers = excelHeaders();
-  const escName = sheet.replace(/'/g, "''");
-  // Get usedRange bounds first
-  const boundsRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/workbook/worksheets('${encodeURIComponent(escName)}')/usedRange(valuesOnly=true)?$select=address,rowCount,columnCount`, { headers });
-  if (!boundsRes.ok) throw new Error(`Excel bounds (${boundsRes.status}): ${await boundsRes.text()}`);
-  const bounds = await boundsRes.json() as { address?: string; rowCount?: number; columnCount?: number };
-  const addr = bounds.address?.split("!")?.[1] ?? "A1:Z1000";
-  const valRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/workbook/worksheets('${encodeURIComponent(escName)}')/range(address='${addr}')?$select=values`, { headers });
-  if (!valRes.ok) throw new Error(`Excel values (${valRes.status}): ${await valRes.text()}`);
-  const j = await valRes.json() as { values?: unknown[][] };
-  return (j.values ?? []).map(r => r.map(c => (c == null ? "" : String(c))));
+  const { sheets } = await downloadAndParseExcel(url);
+  const rows = sheets[sheet];
+  if (!rows) throw new Error(`Aba "${sheet}" não encontrada no Excel.`);
+  return rows;
 }
 
 /* ---------------- Public API ---------------- */

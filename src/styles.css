@@ -137,6 +137,26 @@
   --ep-success: #34d399;
 }
 
+/* Mobile dark: pure black background with frosted-glass cards */
+@media (max-width: 767px) {
+  .dark {
+    --background: #000000;
+    --ep-surface: #000000;
+    --ep-surface-lowest: rgba(255, 255, 255, 0.04);
+    --ep-surface-low: rgba(255, 255, 255, 0.06);
+    --ep-surface-container: rgba(255, 255, 255, 0.08);
+    --ep-surface-highest: rgba(255, 255, 255, 0.12);
+    --ep-outline-variant: rgba(255, 255, 255, 0.10);
+  }
+  .dark section[class*="bg-ep-surface-lowest"],
+  .dark div[class*="bg-ep-surface-lowest"],
+  .dark header[class*="bg-ep-surface-lowest"],
+  .dark nav[class*="bg-ep-surface-lowest"] {
+    backdrop-filter: blur(20px) saturate(160%);
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  }
+}
+
 @layer base {
   html, body { background-color: var(--ep-surface); color: var(--ep-on-surface); }
   body { font-family: var(--font-sans); }
