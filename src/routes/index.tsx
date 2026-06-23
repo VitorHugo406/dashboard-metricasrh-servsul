@@ -406,13 +406,13 @@ function MonthlyChart({ data }: { data: { label: string; realizado: number; pend
   const max = Math.max(1, ...data.map(d => d.total));
   if (!data.length) return <div className="py-8 text-center text-sm text-ep-on-surface-variant">Sem dados no período.</div>;
   return (
-    <div className="flex h-56 md:h-64 items-end gap-3 md:gap-6 px-2">
+    <div className="flex h-80 md:h-96 items-end gap-3 md:gap-6 px-2">
       {data.map(d => (
         <div key={d.label} className="flex flex-1 flex-col items-center gap-2">
-          <div className="flex h-48 md:h-56 w-full items-end justify-center gap-1">
-            <div title={`Realizado ${fmtBRL(d.realizado)}`} className="w-2.5 md:w-3 rounded-t bg-ep-success" style={{ height: `${(d.realizado/max)*100}%` }} />
-            <div title={`Pendente ${fmtBRL(d.pendente)}`} className="w-2.5 md:w-3 rounded-t bg-ep-tertiary" style={{ height: `${(d.pendente/max)*100}%` }} />
-            <div title={`Total ${fmtBRL(d.total)}`} className="w-2.5 md:w-3 rounded-t bg-ep-primary" style={{ height: `${(d.total/max)*100}%` }} />
+          <div className="flex h-72 md:h-88 w-full items-end justify-center gap-1.5" style={{ height: "calc(100% - 1.5rem)" }}>
+            <div title={`Realizado ${fmtBRL(d.realizado)}`} className="w-3 md:w-4 rounded-t bg-ep-success" style={{ height: `${(d.realizado/max)*100}%` }} />
+            <div title={`Pendente ${fmtBRL(d.pendente)}`} className="w-3 md:w-4 rounded-t bg-ep-tertiary" style={{ height: `${(d.pendente/max)*100}%` }} />
+            <div title={`Total ${fmtBRL(d.total)}`} className="w-3 md:w-4 rounded-t bg-ep-primary" style={{ height: `${(d.total/max)*100}%` }} />
           </div>
           <span className="text-[10px] md:text-xs text-ep-on-surface-variant">{d.label}</span>
         </div>
