@@ -705,9 +705,12 @@ function ExportView({ items, config, onSaved }: { items: Reimbursement[]; config
     try {
       const m = await probe({ data: { url } });
       setMeta(m);
-      const firstSheet = sheet || m.sheets[0]?.title || "";
-      setSheet(firstSheet);
-      const headers = m.sheets.find(s => s.title === firstSheet)?.headers ?? [];
+      // If the currently-selected sheet doesn't exist in the new workbook (e.g. user pasted
+      // a different URL), fall back to the first sheet — otherwise headers resolve to [].
+      const validSheet = m.sheets.some(s => s.title === sheet) ? sheet : (m.sheets[0]?.title ?? "");
+      setSheet(validSheet);
+      const headers = m.sheets.find(s => s.title === validSheet)?.headers ?? [];
+
       const guess: Mapping = { ...mapping };
       CANONICAL_FIELDS.forEach(f => {
         if (guess[f.key]) return;
