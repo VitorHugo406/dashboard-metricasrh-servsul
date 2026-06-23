@@ -263,10 +263,10 @@ function ReembolsosView({ items, loading, connected, error, goConnect, isMobile,
       <FiltersBar items={items} filters={filters} setFilters={setFilters} comparison={comparison} setComparison={setComparison} customRange={customRange} setCustomRange={setCustomRange} rangeLabel={ranges.label} />
 
       <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
-        <KpiCard icon="payments" label="Total Reembolsado" value={fmtBRL(kpisCur.total)} delta={deltaPct(kpisCur.total, kpisPrev.total)} note={ranges.label} />
+        <KpiCard icon="payments" label="Total Reembolsado" value={fmtBRL(kpisCur.total)} delta={deltaPct(kpisCur.total, kpisPrev.total)} note={ranges.label} invert />
         <KpiCard icon="hourglass_bottom" label="Pendentes" value={fmtBRL(kpisCur.totalPending)} delta={deltaPct(kpisCur.totalPending, kpisPrev.totalPending)} note={`${kpisCur.pendente} solicitações`} invert />
         <KpiCard icon="task_alt" label="Taxa de Pagamento" value={`${kpisCur.paymentRate.toFixed(1)}%`} delta={kpisCur.paymentRate - kpisPrev.paymentRate} unit="pp" note={`${kpisCur.realizado} realizados`} />
-        <KpiCard icon="receipt" label="Ticket Médio" value={fmtBRLDec(kpisCur.avgAmount)} delta={deltaPct(kpisCur.avgAmount, kpisPrev.avgAmount)} note={`${kpisCur.count} solicitações`} />
+        <KpiCard icon="receipt" label="Ticket Médio" value={fmtBRLDec(kpisCur.avgAmount)} delta={deltaPct(kpisCur.avgAmount, kpisPrev.avgAmount)} note={`${kpisCur.count} solicitações`} invert />
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-3">
