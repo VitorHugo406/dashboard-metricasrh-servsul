@@ -12,4 +12,8 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Outside Lovable's own build (e.g. deploying from a fork to Vercel), use the Vercel
+  // preset so the build emits .vercel/output instead of a Cloudflare _worker.js.
+  // Inside Lovable this override is ignored — the preset is forced to Cloudflare.
+  nitro: { preset: "vercel" },
 });
