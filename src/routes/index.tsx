@@ -246,7 +246,8 @@ function ReembolsosView({ items, loading, connected, error, goConnect, isMobile,
   const kpisCur = useMemo(() => computeKpis(filtered), [filtered]);
   const kpisPrev = useMemo(() => computeKpis(prevFiltered), [prevFiltered]);
   const insights = useMemo(() => generateInsights(items, ranges.current, ranges.previous, ranges.label), [items, ranges]);
-  const monthly = useMemo(() => groupByMonth(filtered).slice(-6), [filtered]);
+  const monthlyBase = useMemo(() => applyFilters(items, { ...filters, range: undefined }), [items, filters]);
+  const monthly = useMemo(() => groupByMonth(monthlyBase).slice(-6), [monthlyBase]);
   const byDept = useMemo(() => groupBy(filtered, "department"), [filtered]);
   const byCat = useMemo(() => groupBy(filtered, "category"), [filtered]);
   const recent = useMemo(() => filtered.slice().sort((a,b) => b.date.getTime() - a.date.getTime()).slice(0, isMobile ? 8 : 50), [filtered, isMobile]);
@@ -711,9 +712,12 @@ function ExportView({ items, config, onSaved }: { items: Reimbursement[]; config
       setSheet(validSheet);
       const headers = m.sheets.find(s => s.title === validSheet)?.headers ?? [];
 
-      const guess: Mapping = { ...mapping };
+      const guess: Mapping = {};
       CANONICAL_FIELDS.forEach(f => {
-        if (guess[f.key]) return;
+        if (mapping[f.key] && headers.includes(mapping[f.key])) {
+          guess[f.key] = mapping[f.key];
+          return;
+        }
         const match = headers.find(h => {
           const hl = h.toLowerCase();
           const lk = f.key.toLowerCase();
@@ -748,6 +752,12 @@ function ExportView({ items, config, onSaved }: { items: Reimbursement[]; config
     mutationFn: async () => refresh(),
     onSuccess: () => onSaved(),
   });
+
+  useEffect(() => {
+    if (!meta || !sheet) return;
+    const headers = meta.sheets.find(s => s.title === sheet)?.headers ?? [];
+    setMapping(current => Object.fromEntries(Object.entries(current).filter(([, value]) => value && headers.includes(value))) as Mapping);
+  }, [meta, sheet]);
 
   const exportCSV = () => download(`reembolsos-${new Date().toISOString().slice(0,10)}.csv`, toCSV(items), "text/csv");
   const exportJSON = () => download(`reembolsos-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(items, null, 2), "application/json");

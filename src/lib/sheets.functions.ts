@@ -85,6 +85,44 @@ type WorkbookCache = { name: string; sheets: Record<string, string[][]>; fetched
 const _wbCache = new Map<string, WorkbookCache>();
 const WB_TTL_MS = 60_000; // dedupe within 1 min for meta+rows on the same URL
 
+function columnLabel(index: number): string {
+  let n = index + 1;
+  let label = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    label = String.fromCharCode(65 + rem) + label;
+    n = Math.floor((n - 1) / 26);
+  }
+  return label;
+}
+
+function makeUniqueHeaders(row: string[]): string[] {
+  const seen = new Map<string, number>();
+  return row.map((cell, index) => {
+    const base = String(cell ?? "").trim() || `Coluna ${columnLabel(index)}`;
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count ? `${base} (${count + 1})` : base;
+  });
+}
+
+function findHeaderRow(rows: string[][]): { rowIndex: number; headers: string[] } {
+  const limit = Math.min(rows.length, 25);
+  let best = { rowIndex: 0, score: -1, nonEmpty: 0 };
+  for (let rowIndex = 0; rowIndex < limit; rowIndex++) {
+    const row = rows[rowIndex] ?? [];
+    const cells = row.map(c => String(c ?? "").trim());
+    const nonEmpty = cells.filter(Boolean).length;
+    if (!nonEmpty) continue;
+    const textLike = cells.filter(c => /[A-Za-zÀ-ÿ]/.test(c)).length;
+    const known = cells.filter(c => /(data|date|valor|total|depart|setor|área|colab|funcion|nome|status|situa|categ|benef|tipo|cliente|client|descri|observ)/i.test(c)).length;
+    const score = nonEmpty * 2 + textLike + known * 4 - rowIndex * 0.2;
+    if (score > best.score) best = { rowIndex, score, nonEmpty };
+  }
+  const raw = rows[best.rowIndex] ?? [];
+  return { rowIndex: best.rowIndex, headers: makeUniqueHeaders(raw) };
+}
+
 async function downloadAndParseExcel(url: string): Promise<WorkbookCache> {
   const cached = _wbCache.get(url);
   if (cached && Date.now() - cached.fetchedAt < WB_TTL_MS) return cached;
@@ -116,7 +154,7 @@ async function excelMeta(url: string): Promise<SheetMeta> {
   const sheetMetas = Object.entries(sheets).map(([title, rows], idx) => ({
     id: idx,
     title,
-    headers: (rows[0] ?? []).map(String).filter(h => h !== ""),
+    headers: findHeaderRow(rows).headers,
   }));
   return { sourceType: "excel", spreadsheetId: url, title: name, sheets: sheetMetas };
 }
@@ -125,15 +163,20 @@ async function excelRows(url: string, sheet: string): Promise<string[][]> {
   const { sheets } = await downloadAndParseExcel(url);
   const rows = sheets[sheet];
   if (!rows) throw new Error(`Aba "${sheet}" não encontrada no Excel.`);
-  return rows;
+  const { rowIndex, headers } = findHeaderRow(rows);
+  return [headers, ...rows.slice(rowIndex + 1)];
+}
+
+export async function getSpreadsheetMetaData(url: string): Promise<SheetMeta> {
+  const src = detectSource(url);
+  return src === "google" ? googleMeta(url) : excelMeta(url);
 }
 
 /* ---------------- Public API ---------------- */
 export const getSpreadsheetMeta = createServerFn({ method: "POST" })
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }): Promise<SheetMeta> => {
-    const src = detectSource(data.url);
-    return src === "google" ? googleMeta(data.url) : excelMeta(data.url);
+    return getSpreadsheetMetaData(data.url);
   });
 
 export type RawSheetData = { headers: string[]; rows: string[][]; fetchedAt: string };
@@ -141,5 +184,5 @@ export type RawSheetData = { headers: string[]; rows: string[][]; fetchedAt: str
 export async function fetchSheetData(sourceType: SourceType, url: string, spreadsheetId: string, sheet: string): Promise<RawSheetData> {
   const values = sourceType === "google" ? await googleRows(spreadsheetId, sheet) : await excelRows(url, sheet);
   const [headers = [], ...rows] = values;
-  return { headers: headers.map(String), rows, fetchedAt: new Date().toISOString() };
+  return { headers: makeUniqueHeaders(headers.map(String)), rows, fetchedAt: new Date().toISOString() };
 }
