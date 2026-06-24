@@ -714,8 +714,9 @@ function ExportView({ items, config, onSaved }: { items: Reimbursement[]; config
 
       const guess: Mapping = {};
       CANONICAL_FIELDS.forEach(f => {
-        if (mapping[f.key] && headers.includes(mapping[f.key])) {
-          guess[f.key] = mapping[f.key];
+        const current = mapping[f.key];
+        if (current && headers.includes(current)) {
+          guess[f.key] = current;
           return;
         }
         const match = headers.find(h => {
