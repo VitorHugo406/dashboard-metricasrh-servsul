@@ -14,8 +14,9 @@ type ConfigRow = {
   last_sync_error: string | null;
 };
 
-export const getSheetConfigFn = createServerFn({ method: "GET" })
-  .handler(async (): Promise<Config | null> => getSheetConfig());
+export const getSheetConfigFn = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Config | null> => getSheetConfig(),
+);
 
 export async function getSheetConfig(): Promise<Config | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -53,26 +54,40 @@ export const saveSheetConfigFn = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin.from("sheet_config").upsert(row, { onConflict: "id" });
     if (error) throw new Error(`Salvar config: ${error.message}`);
     // Trigger an immediate sync after save
-    try { await refreshReimbursements(); } catch (e) { console.error("initial sync failed", e); }
+    try {
+      await refreshReimbursements();
+    } catch (e) {
+      console.error("initial sync failed", e);
+    }
     const cfg = await getSheetConfig();
     return { ok: true, config: cfg! };
   });
 
-export const refreshReimbursementsFn = createServerFn({ method: "POST" })
-  .handler(async (): Promise<{ ok: boolean; count: number; error?: string }> => refreshReimbursements());
+export const refreshReimbursementsFn = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ ok: boolean; count: number; error?: string }> => refreshReimbursements(),
+);
 
-export async function refreshReimbursements(): Promise<{ ok: boolean; count: number; error?: string }> {
+export async function refreshReimbursements(): Promise<{
+  ok: boolean;
+  count: number;
+  error?: string;
+}> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: cfgRow } = await supabaseAdmin.from("sheet_config").select("*").maybeSingle();
   if (!cfgRow) return { ok: false, count: 0, error: "Nenhuma planilha configurada" };
   const row = cfgRow as ConfigRow;
   try {
-    const raw = await fetchSheetData(row.source_type, row.spreadsheet_url, row.spreadsheet_id, row.sheet_name);
+    const raw = await fetchSheetData(
+      row.source_type,
+      row.spreadsheet_url,
+      row.spreadsheet_id,
+      row.sheet_name,
+    );
     const items = normalize(raw.headers, raw.rows, row.mapping);
     // Replace cache
     await supabaseAdmin.from("reimbursement_cache").delete().neq("id", "__never__");
     if (items.length) {
-      const records = items.map(i => ({
+      const records = items.map((i) => ({
         id: i.id,
         date: i.date.toISOString().slice(0, 10),
         amount: i.amount,
@@ -93,11 +108,17 @@ export async function refreshReimbursements(): Promise<{ ok: boolean; count: num
         if (error) throw new Error(error.message);
       }
     }
-    await supabaseAdmin.from("sheet_config").update({ last_sync_at: new Date().toISOString(), last_sync_error: null }).eq("id", true);
+    await supabaseAdmin
+      .from("sheet_config")
+      .update({ last_sync_at: new Date().toISOString(), last_sync_error: null })
+      .eq("id", true);
     return { ok: true, count: items.length };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await supabaseAdmin.from("sheet_config").update({ last_sync_at: new Date().toISOString(), last_sync_error: msg }).eq("id", true);
+    await supabaseAdmin
+      .from("sheet_config")
+      .update({ last_sync_at: new Date().toISOString(), last_sync_error: msg })
+      .eq("id", true);
     return { ok: false, count: 0, error: msg };
   }
 }
@@ -105,30 +126,41 @@ export async function refreshReimbursements(): Promise<{ ok: boolean; count: num
 export const probeSheetFn = createServerFn({ method: "POST" })
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }) => {
-    try { detectSource(data.url); } catch (e) { throw e; }
+    detectSource(data.url);
     return getSpreadsheetMetaData(data.url);
   });
 
-export const getReimbursementCacheFn = createServerFn({ method: "GET" })
-  .handler(async (): Promise<RawReimbursementRow[]> => {
+export const getReimbursementCacheFn = createServerFn({ method: "GET" }).handler(
+  async (): Promise<RawReimbursementRow[]> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("reimbursement_cache")
-      .select("id, date, amount, department, employee, client, category, status, description, observacao, submitted_at")
+      .select(
+        "id, date, amount, department, employee, client, category, status, description, observacao, submitted_at",
+      )
       .order("date", { ascending: false })
       .limit(10000);
     if (error) throw new Error(error.message);
     return (data ?? []) as RawReimbursementRow[];
-  });
+  },
+);
 
 export type RawReimbursementRow = {
-  id: string; date: string; amount: number; department: string; employee: string;
-  client: string | null; category: string; status: "pendente" | "realizado";
-  description: string | null; observacao: string | null; submitted_at: string | null;
+  id: string;
+  date: string;
+  amount: number;
+  department: string;
+  employee: string;
+  client: string | null;
+  category: string;
+  status: "pendente" | "realizado";
+  description: string | null;
+  observacao: string | null;
+  submitted_at: string | null;
 };
 
 export function rowsToReimbursements(rows: RawReimbursementRow[]): Reimbursement[] {
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     date: new Date(r.date),
     amount: Number(r.amount),

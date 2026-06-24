@@ -241,7 +241,10 @@ function ReembolsosView({ items, loading, connected, error, goConnect, isMobile,
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
 
   const ranges = useMemo(() => getComparisonRanges(comparison, customRange), [comparison, customRange]);
-  const filtered = useMemo(() => applyFilters(items, { ...filters, range: filters.range ?? ranges.current }), [items, filters, ranges]);
+  const filtered = useMemo(
+    () => applyFilters(items, { ...filters, range: filters.range ?? ranges.current }),
+    [items, filters, ranges],
+  );
   const prevFiltered = useMemo(() => applyFilters(items, { ...filters, range: ranges.previous }), [items, filters, ranges]);
   const kpisCur = useMemo(() => computeKpis(filtered), [filtered]);
   const kpisPrev = useMemo(() => computeKpis(prevFiltered), [prevFiltered]);
@@ -250,7 +253,10 @@ function ReembolsosView({ items, loading, connected, error, goConnect, isMobile,
   const monthly = useMemo(() => groupByMonth(monthlyBase).slice(-6), [monthlyBase]);
   const byDept = useMemo(() => groupBy(filtered, "department"), [filtered]);
   const byCat = useMemo(() => groupBy(filtered, "category"), [filtered]);
-  const recent = useMemo(() => filtered.slice().sort((a,b) => b.date.getTime() - a.date.getTime()).slice(0, isMobile ? 8 : 50), [filtered, isMobile]);
+  const recent = useMemo(
+    () => filtered.slice().sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, isMobile ? 8 : 50),
+    [filtered, isMobile],
+  );
 
   if (!connected) {
     return <EmptyState icon="link" title="Conecte sua planilha de reembolsos" body="Vá em Dados & Exportação, cole o link do Google Sheets ou Excel Online e mapeie as colunas." cta={{ label: "Configurar agora", onClick: goConnect }} />;
@@ -708,22 +714,33 @@ function ExportView({ items, config, onSaved }: { items: Reimbursement[]; config
       setMeta(m);
       // If the currently-selected sheet doesn't exist in the new workbook (e.g. user pasted
       // a different URL), fall back to the first sheet — otherwise headers resolve to [].
-      const validSheet = m.sheets.some(s => s.title === sheet) ? sheet : (m.sheets[0]?.title ?? "");
+      const validSheet = m.sheets.some((s) => s.title === sheet) ? sheet : (m.sheets[0]?.title ?? "");
       setSheet(validSheet);
-      const headers = m.sheets.find(s => s.title === validSheet)?.headers ?? [];
+      const headers = m.sheets.find((s) => s.title === validSheet)?.headers ?? [];
 
       const guess: Mapping = {};
-      CANONICAL_FIELDS.forEach(f => {
+      CANONICAL_FIELDS.forEach((f) => {
         const current = mapping[f.key];
         if (current && headers.includes(current)) {
           guess[f.key] = current;
           return;
         }
-        const match = headers.find(h => {
+        const match = headers.find((h) => {
           const hl = h.toLowerCase();
           const lk = f.key.toLowerCase();
           const ll = f.label.toLowerCase().split("/")[0].trim();
-          return hl.includes(lk) || hl.includes(ll) || (f.key === "observacao" && /obs/.test(hl)) || (f.key === "employee" && /(colab|funcion|nome|usuário|user)/.test(hl)) || (f.key === "department" && /(depart|setor|área)/.test(hl)) || (f.key === "amount" && /(valor|total|qtd|montant)/.test(hl)) || (f.key === "date" && /(data|date|dia)/.test(hl)) || (f.key === "status" && /(situa|status)/.test(hl)) || (f.key === "category" && /(categ|benef|tipo)/.test(hl)) || (f.key === "client" && /(client|cliente)/.test(hl));
+          return (
+            hl.includes(lk) ||
+            hl.includes(ll) ||
+            (f.key === "observacao" && /obs/.test(hl)) ||
+            (f.key === "employee" && /(colab|funcion|nome|usuário|user)/.test(hl)) ||
+            (f.key === "department" && /(depart|setor|área)/.test(hl)) ||
+            (f.key === "amount" && /(valor|total|qtd|montant)/.test(hl)) ||
+            (f.key === "date" && /(data|date|dia)/.test(hl)) ||
+            (f.key === "status" && /(situa|status)/.test(hl)) ||
+            (f.key === "category" && /(categ|benef|tipo)/.test(hl)) ||
+            (f.key === "client" && /(client|cliente)/.test(hl))
+          );
         });
         if (match) guess[f.key] = match;
       });
@@ -756,14 +773,35 @@ function ExportView({ items, config, onSaved }: { items: Reimbursement[]; config
 
   useEffect(() => {
     if (!meta || !sheet) return;
-    const headers = meta.sheets.find(s => s.title === sheet)?.headers ?? [];
-    setMapping(current => Object.fromEntries(Object.entries(current).filter(([, value]) => value && headers.includes(value))) as Mapping);
+    const headers = meta.sheets.find((s) => s.title === sheet)?.headers ?? [];
+    setMapping(
+      (current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(([, value]) => value && headers.includes(value)),
+        ) as Mapping,
+    );
   }, [meta, sheet]);
 
-  const exportCSV = () => download(`reembolsos-${new Date().toISOString().slice(0,10)}.csv`, toCSV(items), "text/csv");
-  const exportJSON = () => download(`reembolsos-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(items, null, 2), "application/json");
+  const exportCSV = () =>
+    download(`reembolsos-${new Date().toISOString().slice(0, 10)}.csv`, toCSV(items), "text/csv");
+  const exportJSON = () =>
+    download(
+      `reembolsos-${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify(items, null, 2),
+      "application/json",
+    );
 
-  const sourceLabel = url.toLowerCase().includes("docs.google.com") ? "Google Sheets" : (url.toLowerCase().includes("sharepoint.com") || url.toLowerCase().includes("onedrive") || url.toLowerCase().includes("1drv.ms")) ? "Excel Online" : meta ? (meta.sourceType === "google" ? "Google Sheets" : "Excel Online") : "—";
+  const sourceLabel = url.toLowerCase().includes("docs.google.com")
+    ? "Google Sheets"
+    : url.toLowerCase().includes("sharepoint.com") ||
+        url.toLowerCase().includes("onedrive") ||
+        url.toLowerCase().includes("1drv.ms")
+      ? "Excel Online"
+      : meta
+        ? meta.sourceType === "google"
+          ? "Google Sheets"
+          : "Excel Online"
+        : "—";
 
   return (
     <div className="space-y-4 md:space-y-6">
