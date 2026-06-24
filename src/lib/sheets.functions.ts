@@ -164,7 +164,9 @@ async function downloadAndParseExcel(url: string): Promise<WorkbookCache> {
   const headers = excelHeaders();
   let name = "workbook";
   try {
-    const itemRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem?$select=id,name`, { headers });
+    const itemRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem?$select=id,name`, {
+      headers,
+    });
     if (itemRes.ok) {
       const j = (await itemRes.json()) as { name?: string };
       name = j.name ?? name;
@@ -184,9 +186,7 @@ async function downloadAndParseExcel(url: string): Promise<WorkbookCache> {
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "" });
-    sheets[sheetName] = rows.map((r) =>
-      (r as unknown[]).map((c) => (c == null ? "" : String(c))),
-    );
+    sheets[sheetName] = rows.map((r) => (r as unknown[]).map((c) => (c == null ? "" : String(c))));
   }
   const entry: WorkbookCache = { name, sheets, fetchedAt: Date.now() };
   _wbCache.set(url, entry);
@@ -231,7 +231,12 @@ export async function fetchSheetData(
   spreadsheetId: string,
   sheet: string,
 ): Promise<RawSheetData> {
-  const values = sourceType === "google" ? await googleRows(spreadsheetId, sheet) : await excelRows(url, sheet);
+  const values =
+    sourceType === "google" ? await googleRows(spreadsheetId, sheet) : await excelRows(url, sheet);
   const [headers = [], ...rows] = values;
-  return { headers: makeUniqueHeaders(headers.map(String)), rows, fetchedAt: new Date().toISOString() };
+  return {
+    headers: makeUniqueHeaders(headers.map(String)),
+    rows,
+    fetchedAt: new Date().toISOString(),
+  };
 }
