@@ -806,6 +806,7 @@ function MonthlyChart({
   data: { label: string; realizado: number; pendente: number; total: number }[];
 }) {
   const max = Math.max(1, ...data.map((d) => d.total));
+  const barHeight = (value: number) => (value > 0 ? `${Math.max(4, (value / max) * 100)}%` : "0%");
   if (!data.length)
     return (
       <div className="py-8 text-center text-sm text-ep-on-surface-variant">
@@ -823,17 +824,17 @@ function MonthlyChart({
             <div
               title={`Realizado ${fmtBRL(d.realizado)}`}
               className="w-3 md:w-4 rounded-t bg-ep-success"
-              style={{ height: `${(d.realizado / max) * 100}%` }}
+              style={{ height: barHeight(d.realizado) }}
             />
             <div
               title={`Pendente ${fmtBRL(d.pendente)}`}
               className="w-3 md:w-4 rounded-t bg-ep-tertiary"
-              style={{ height: `${(d.pendente / max) * 100}%` }}
+              style={{ height: barHeight(d.pendente) }}
             />
             <div
               title={`Total ${fmtBRL(d.total)}`}
               className="w-3 md:w-4 rounded-t bg-ep-primary"
-              style={{ height: `${(d.total / max) * 100}%` }}
+              style={{ height: barHeight(d.total) }}
             />
           </div>
           <span className="text-[10px] md:text-xs text-ep-on-surface-variant">{d.label}</span>
@@ -1323,11 +1324,38 @@ function ExportView({
       setSheet(validSheet);
       const headers = m.sheets.find((s) => s.title === validSheet)?.headers ?? [];
 
+      const guessHeader = (key: keyof Mapping, headersForGuess: string[]) => {
+        const norm = (value: string) =>
+          value
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .trim();
+        const candidates = headersForGuess.map((header) => ({ header, value: norm(header) }));
+        const first = (patterns: RegExp[]) =>
+          candidates.find(({ value }) => patterns.some((pattern) => pattern.test(value)))?.header;
+        if (key === "date") return first([/^(pagamento|data\s*pagamento|dt\s*pagamento|pago\s*em)$/]);
+        if (key === "submittedAt") return first([/data\s*(da\s*)?sol/, /solicit/, /envio/]);
+        if (key === "amount") return first([/valor.*reembolso/, /^valor$/, /total.*reembolso/]);
+        if (key === "employee") return first([/^nome$/, /colab/, /funcion/]);
+        if (key === "department") return first([/^departamento$/, /^setor$/, /^area$/]);
+        if (key === "category") return first([/tipo.*reembolso/, /beneficio/, /^categoria$/, /^tipo$/]);
+        if (key === "client") return first([/^cliente$/, /^client/]);
+        if (key === "status") return first([/^status$/, /situacao/]);
+        if (key === "description") return first([/^motivo$/, /descri/, /^historico$/]);
+        if (key === "observacao") return first([/^observ/, /^obs\.?$/]);
+        return undefined;
+      };
       const guess: Mapping = {};
       CANONICAL_FIELDS.forEach((f) => {
         const current = mapping[f.key];
         if (current && headers.includes(current)) {
           guess[f.key] = current;
+          return;
+        }
+        const preferred = guessHeader(f.key, headers);
+        if (preferred) {
+          guess[f.key] = preferred;
           return;
         }
         const match = headers.find((h) => {
