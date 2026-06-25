@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { fetchSheetData, detectSource, getSpreadsheetMetaData } from "./sheets.functions";
-import { normalize } from "@/features/reimb/normalize";
+import { normalize, parseDate, toISODate } from "@/features/reimb/normalize";
 import type { Config, Mapping, Reimbursement, SourceType } from "@/features/reimb/types";
 
 type ConfigRow = {
@@ -89,7 +89,7 @@ export async function refreshReimbursements(): Promise<{
     if (items.length) {
       const records = items.map((i) => ({
         id: i.id,
-        date: i.date.toISOString().slice(0, 10),
+        date: toISODate(i.date),
         amount: i.amount,
         department: i.department,
         employee: i.employee,
@@ -98,7 +98,7 @@ export async function refreshReimbursements(): Promise<{
         status: i.status,
         description: i.description || null,
         observacao: i.observacao || null,
-        submitted_at: i.submittedAt ? i.submittedAt.toISOString().slice(0, 10) : null,
+        submitted_at: i.submittedAt ? toISODate(i.submittedAt) : null,
       }));
       // chunk inserts
       const chunkSize = 500;
@@ -162,7 +162,7 @@ export type RawReimbursementRow = {
 export function rowsToReimbursements(rows: RawReimbursementRow[]): Reimbursement[] {
   return rows.map((r) => ({
     id: r.id,
-    date: new Date(r.date),
+    date: parseDate(r.date) ?? new Date(r.date),
     amount: Number(r.amount),
     department: r.department,
     employee: r.employee,
@@ -171,6 +171,6 @@ export function rowsToReimbursements(rows: RawReimbursementRow[]): Reimbursement
     status: r.status,
     description: r.description ?? "",
     observacao: r.observacao ?? "",
-    submittedAt: r.submitted_at ? new Date(r.submitted_at) : undefined,
+    submittedAt: r.submitted_at ? (parseDate(r.submitted_at) ?? new Date(r.submitted_at)) : undefined,
   }));
 }
