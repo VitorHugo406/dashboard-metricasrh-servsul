@@ -1,5 +1,19 @@
 import type { Mapping, Reimbursement, ReimbStatus } from "./types";
 
+function makeLocalDate(year: number, month: number, day: number): Date | null {
+  const dt = new Date(year, month - 1, day);
+  if (dt.getFullYear() !== year || dt.getMonth() !== month - 1 || dt.getDate() !== day)
+    return null;
+  return dt;
+}
+
+export function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function parseDate(s: string | null | undefined): Date | null {
   if (s == null) return null;
   const t = String(s).trim();
@@ -8,24 +22,28 @@ export function parseDate(s: string | null | undefined): Date | null {
   if (/^\d{4,6}(\.\d+)?$/.test(t)) {
     const n = Number(t);
     // Excel epoch 1899-12-30
-    const dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
-    if (!isNaN(dt.getTime())) return dt;
+    const utc = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+    if (!isNaN(utc.getTime()))
+      return makeLocalDate(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
   }
-  // ISO yyyy-mm-dd[...]
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
-    const iso = new Date(t);
-    if (!isNaN(iso.getTime())) return iso;
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    return makeLocalDate(year, month, day);
   }
-  // dd/mm/yyyy or dd-mm-yyyy
   const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
   if (m) {
-    const [, d, mo, y] = m;
+    const [, a, b, y] = m;
     const year = y.length === 2 ? 2000 + Number(y) : Number(y);
-    const dt = new Date(year, Number(mo) - 1, Number(d));
-    if (!isNaN(dt.getTime())) return dt;
+    const first = Number(a);
+    const second = Number(b);
+    const monthFirst = first <= 12 && second > 12;
+    const day = monthFirst ? second : first;
+    const month = monthFirst ? first : second;
+    return makeLocalDate(year, month, day);
   }
-  const fallback = new Date(t);
-  if (!isNaN(fallback.getTime())) return fallback;
   return null;
 }
 
@@ -66,11 +84,12 @@ export function normalize(headers: string[], rows: string[][], mapping: Mapping)
   };
   const get = (r: string[], k: number) => (k >= 0 ? r[k] ?? "" : "");
   const out: Reimbursement[] = [];
+  const mappedKeys = Object.values(mapping).filter(Boolean).join("|");
   rows.forEach((r, n) => {
     const date = parseDate(get(r, i.date));
     if (!date) return;
     out.push({
-      id: `r-${n}-${date.getTime()}`,
+      id: `r-${n}-${toISODate(date)}-${Math.abs(`${mappedKeys}|${r.join("|")}`.split("").reduce((h, ch) => ((h << 5) - h + ch.charCodeAt(0)) | 0, 0))}`,
       date,
       amount: parseAmount(get(r, i.amount)),
       department: get(r, i.department) || "—",

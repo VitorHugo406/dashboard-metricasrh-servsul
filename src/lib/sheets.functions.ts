@@ -13,10 +13,10 @@ function googleHeaders() {
     string
   >;
 }
-function excelHeaders() {
+function tryExcelHeaders() {
   const lovable = process.env.LOVABLE_API_KEY;
   const conn = process.env.MICROSOFT_EXCEL_API_KEY;
-  if (!lovable || !conn) throw new Error("Microsoft Excel não configurado nesta conta");
+  if (!lovable || !conn) return null;
   return { Authorization: `Bearer ${lovable}`, "X-Connection-Api-Key": conn } as Record<
     string,
     string
@@ -52,6 +52,80 @@ function encodeShareUrl(url: string): string {
     .replace(/\//g, "_")
     .replace(/\+/g, "-");
   return "u!" + b64;
+}
+
+const PUBLIC_EXCEL_HOSTS = [
+  "1drv.ms",
+  "onedrive.live.com",
+  "office.com",
+  "www.office.com",
+  "officeapps.live.com",
+  "sharepoint.com",
+  "microsoftpersonalcontent.com",
+];
+
+function assertAllowedExcelUrl(input: string): URL {
+  const parsed = new URL(input);
+  if (parsed.protocol !== "https:") throw new Error("O link do Excel precisa usar HTTPS.");
+  const host = parsed.hostname.toLowerCase();
+  const allowed = PUBLIC_EXCEL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  if (!allowed) throw new Error("Domínio do link Excel não permitido.");
+  return parsed;
+}
+
+function mergeSetCookie(cookieHeader: string, setCookie: string | null) {
+  if (!setCookie) return cookieHeader;
+  const jar = new Map(
+    cookieHeader
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const eq = part.indexOf("=");
+        return [part.slice(0, eq), part.slice(eq + 1)] as const;
+      }),
+  );
+  setCookie.split(/,(?=\s*[^;,=]+=[^;,]+)/).forEach((cookie) => {
+    const [nameValue] = cookie.split(";");
+    const eq = nameValue.indexOf("=");
+    if (eq > 0) jar.set(nameValue.slice(0, eq).trim(), nameValue.slice(eq + 1).trim());
+  });
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
+async function fetchAllowedExcelUrl(input: string, init?: RequestInit): Promise<Response> {
+  let url = assertAllowedExcelUrl(input);
+  let cookie = "";
+  const requestHeaders = new Headers(init?.headers);
+  if (!requestHeaders.has("user-agent"))
+    requestHeaders.set("user-agent", "python-requests/2.31.0");
+  if (!requestHeaders.has("accept"))
+    requestHeaders.set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+  for (let redirects = 0; redirects <= 6; redirects++) {
+    const headers = new Headers(requestHeaders);
+    if (cookie) headers.set("cookie", cookie);
+    const res = await fetch(url.toString(), {
+      ...init,
+      redirect: "manual",
+      headers,
+    });
+    cookie = mergeSetCookie(cookie, res.headers.get("set-cookie"));
+    if (![301, 302, 303, 307, 308].includes(res.status)) return res;
+    const location = res.headers.get("location");
+    if (!location) return res;
+    url = assertAllowedExcelUrl(new URL(location, url).toString());
+  }
+  throw new Error("Redirecionamentos demais ao abrir o link do Excel.");
+}
+
+function extractWopiContext(html: string): { FileName?: string; FileGetUrl?: string } | null {
+  const match = html.match(/_wopiContextJson\s*=\s*(\{[\s\S]*?\});/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]) as { FileName?: string; FileGetUrl?: string };
+  } catch {
+    return null;
+  }
 }
 
 /* ---------------- Google ---------------- */
@@ -160,32 +234,63 @@ function findHeaderRow(rows: string[][]): { rowIndex: number; headers: string[] 
 async function downloadAndParseExcel(url: string): Promise<WorkbookCache> {
   const cached = _wbCache.get(url);
   if (cached && Date.now() - cached.fetchedAt < WB_TTL_MS) return cached;
+  assertAllowedExcelUrl(url);
   const shareId = encodeShareUrl(url);
-  const headers = excelHeaders();
+  const headers = tryExcelHeaders();
   let name = "workbook";
-  try {
-    const itemRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem?$select=id,name`, {
-      headers,
-    });
-    if (itemRes.ok) {
-      const j = (await itemRes.json()) as { name?: string };
-      name = j.name ?? name;
+  if (headers) {
+    try {
+      const itemRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem?$select=id,name`, {
+        headers,
+      });
+      if (itemRes.ok) {
+        const j = (await itemRes.json()) as { name?: string };
+        name = j.name ?? name;
+      }
+    } catch {
+      /* non-fatal */
     }
-  } catch {
-    /* non-fatal */
   }
-  const dlRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/content`, {
-    headers,
-    redirect: "follow",
-  });
-  if (!dlRes.ok) throw new Error(`Excel download (${dlRes.status}): ${await dlRes.text()}`);
-  const buf = new Uint8Array(await dlRes.arrayBuffer());
+  let buf: Uint8Array | null = null;
+  let gatewayError = "Microsoft Excel não autorizou o download pela conexão atual.";
+  if (headers) {
+    const dlRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/content`, {
+      headers,
+      redirect: "follow",
+    });
+    if (dlRes.ok) {
+      buf = new Uint8Array(await dlRes.arrayBuffer());
+    } else {
+      gatewayError = await dlRes.text();
+    }
+  }
+  if (!buf) {
+    const publicRes = await fetchAllowedExcelUrl(url);
+    const contentType = publicRes.headers.get("content-type") ?? "";
+    if (!publicRes.ok) throw new Error(`Excel download (${publicRes.status}): ${gatewayError}`);
+    if (!contentType.includes("text/html")) {
+      buf = new Uint8Array(await publicRes.arrayBuffer());
+    } else {
+      const html = await publicRes.text();
+      const wopi = extractWopiContext(html);
+      if (!wopi?.FileGetUrl) throw new Error(`Excel download: ${gatewayError}`);
+      if (wopi.FileName) name = wopi.FileName;
+      const fileRes = await fetchAllowedExcelUrl(wopi.FileGetUrl, {
+        headers: { accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*" },
+      });
+      if (!fileRes.ok) throw new Error(`Excel download (${fileRes.status}): ${await fileRes.text()}`);
+      buf = new Uint8Array(await fileRes.arrayBuffer());
+    }
+  }
+  if (!buf || buf.length < 4 || buf[0] !== 0x50 || buf[1] !== 0x4b) {
+    throw new Error("O arquivo baixado não parece ser uma planilha .xlsx válida.");
+  }
   const XLSX = await import("xlsx");
   const wb = XLSX.read(buf, { type: "array" });
   const sheets: Record<string, string[][]> = {};
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "" });
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: "" });
     sheets[sheetName] = rows.map((r) => (r as unknown[]).map((c) => (c == null ? "" : String(c))));
   }
   const entry: WorkbookCache = { name, sheets, fetchedAt: Date.now() };
