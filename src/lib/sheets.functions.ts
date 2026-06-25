@@ -73,29 +73,49 @@ function assertAllowedExcelUrl(input: string): URL {
   return parsed;
 }
 
-async function fetchAllowedExcelUrl(input: string, init?: RequestInit, redirects = 0): Promise<Response> {
-  const url = assertAllowedExcelUrl(input);
+function mergeSetCookie(cookieHeader: string, setCookie: string | null) {
+  if (!setCookie) return cookieHeader;
+  const jar = new Map(
+    cookieHeader
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const eq = part.indexOf("=");
+        return [part.slice(0, eq), part.slice(eq + 1)] as const;
+      }),
+  );
+  setCookie.split(/,(?=\s*[^;,=]+=[^;,]+)/).forEach((cookie) => {
+    const [nameValue] = cookie.split(";");
+    const eq = nameValue.indexOf("=");
+    if (eq > 0) jar.set(nameValue.slice(0, eq).trim(), nameValue.slice(eq + 1).trim());
+  });
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
+async function fetchAllowedExcelUrl(input: string, init?: RequestInit): Promise<Response> {
+  let url = assertAllowedExcelUrl(input);
+  let cookie = "";
   const requestHeaders = new Headers(init?.headers);
   if (!requestHeaders.has("user-agent"))
-    requestHeaders.set(
-      "user-agent",
-      "Mozilla/5.0 (compatible; ReembolsosDashboard/1.0; +https://lovable.app)",
-    );
+    requestHeaders.set("user-agent", "python-requests/2.31.0");
   if (!requestHeaders.has("accept"))
     requestHeaders.set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-  const res = await fetch(url.toString(), {
-    ...init,
-    redirect: "manual",
-    headers: requestHeaders,
-  });
-  if ([301, 302, 303, 307, 308].includes(res.status)) {
-    if (redirects >= 6) throw new Error("Redirecionamentos demais ao abrir o link do Excel.");
+  for (let redirects = 0; redirects <= 6; redirects++) {
+    const headers = new Headers(requestHeaders);
+    if (cookie) headers.set("cookie", cookie);
+    const res = await fetch(url.toString(), {
+      ...init,
+      redirect: "manual",
+      headers,
+    });
+    cookie = mergeSetCookie(cookie, res.headers.get("set-cookie"));
+    if (![301, 302, 303, 307, 308].includes(res.status)) return res;
     const location = res.headers.get("location");
     if (!location) return res;
-    const next = new URL(location, url).toString();
-    return fetchAllowedExcelUrl(next, init, redirects + 1);
+    url = assertAllowedExcelUrl(new URL(location, url).toString());
   }
-  return res;
+  throw new Error("Redirecionamentos demais ao abrir o link do Excel.");
 }
 
 function extractWopiContext(html: string): { FileName?: string; FileGetUrl?: string } | null {
