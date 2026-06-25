@@ -13,16 +13,6 @@ function googleHeaders() {
     string
   >;
 }
-function excelHeaders() {
-  const lovable = process.env.LOVABLE_API_KEY;
-  const conn = process.env.MICROSOFT_EXCEL_API_KEY;
-  if (!lovable || !conn) throw new Error("Microsoft Excel não configurado nesta conta");
-  return { Authorization: `Bearer ${lovable}`, "X-Connection-Api-Key": conn } as Record<
-    string,
-    string
-  >;
-}
-
 function tryExcelHeaders() {
   const lovable = process.env.LOVABLE_API_KEY;
   const conn = process.env.MICROSOFT_EXCEL_API_KEY;
