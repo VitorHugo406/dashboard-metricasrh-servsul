@@ -59,6 +59,7 @@ const PUBLIC_EXCEL_HOSTS = [
   "onedrive.live.com",
   "office.com",
   "www.office.com",
+  "officeapps.live.com",
   "sharepoint.com",
   "microsoftpersonalcontent.com",
 ];
