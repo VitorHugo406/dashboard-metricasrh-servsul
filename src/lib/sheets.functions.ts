@@ -23,6 +23,16 @@ function excelHeaders() {
   >;
 }
 
+function tryExcelHeaders() {
+  const lovable = process.env.LOVABLE_API_KEY;
+  const conn = process.env.MICROSOFT_EXCEL_API_KEY;
+  if (!lovable || !conn) return null;
+  return { Authorization: `Bearer ${lovable}`, "X-Connection-Api-Key": conn } as Record<
+    string,
+    string
+  >;
+}
+
 export function detectSource(url: string): SourceType {
   const u = url.toLowerCase();
   if (u.includes("docs.google.com/spreadsheets")) return "google";
@@ -74,15 +84,18 @@ function assertAllowedExcelUrl(input: string): URL {
 
 async function fetchAllowedExcelUrl(input: string, init?: RequestInit, redirects = 0): Promise<Response> {
   const url = assertAllowedExcelUrl(input);
+  const requestHeaders = new Headers(init?.headers);
+  if (!requestHeaders.has("user-agent"))
+    requestHeaders.set(
+      "user-agent",
+      "Mozilla/5.0 (compatible; ReembolsosDashboard/1.0; +https://lovable.app)",
+    );
+  if (!requestHeaders.has("accept"))
+    requestHeaders.set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
   const res = await fetch(url.toString(), {
     ...init,
     redirect: "manual",
-    headers: {
-      "user-agent":
-        "Mozilla/5.0 (compatible; ReembolsosDashboard/1.0; +https://lovable.app)",
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      ...(init?.headers ?? {}),
-    },
+    headers: requestHeaders,
   });
   if ([301, 302, 303, 307, 308].includes(res.status)) {
     if (redirects >= 6) throw new Error("Redirecionamentos demais ao abrir o link do Excel.");
@@ -212,37 +225,44 @@ async function downloadAndParseExcel(url: string): Promise<WorkbookCache> {
   if (cached && Date.now() - cached.fetchedAt < WB_TTL_MS) return cached;
   assertAllowedExcelUrl(url);
   const shareId = encodeShareUrl(url);
-  const headers = excelHeaders();
+  const headers = tryExcelHeaders();
   let name = "workbook";
-  try {
-    const itemRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem?$select=id,name`, {
-      headers,
-    });
-    if (itemRes.ok) {
-      const j = (await itemRes.json()) as { name?: string };
-      name = j.name ?? name;
+  if (headers) {
+    try {
+      const itemRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem?$select=id,name`, {
+        headers,
+      });
+      if (itemRes.ok) {
+        const j = (await itemRes.json()) as { name?: string };
+        name = j.name ?? name;
+      }
+    } catch {
+      /* non-fatal */
     }
-  } catch {
-    /* non-fatal */
   }
   let buf: Uint8Array | null = null;
-  const dlRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/content`, {
-    headers,
-    redirect: "follow",
-  });
-  if (dlRes.ok) {
-    buf = new Uint8Array(await dlRes.arrayBuffer());
-  } else {
-    const gatewayError = await dlRes.text();
+  let gatewayError = "Microsoft Excel não autorizou o download pela conexão atual.";
+  if (headers) {
+    const dlRes = await fetch(`${EXCEL_GW}/shares/${shareId}/driveItem/content`, {
+      headers,
+      redirect: "follow",
+    });
+    if (dlRes.ok) {
+      buf = new Uint8Array(await dlRes.arrayBuffer());
+    } else {
+      gatewayError = await dlRes.text();
+    }
+  }
+  if (!buf) {
     const publicRes = await fetchAllowedExcelUrl(url);
     const contentType = publicRes.headers.get("content-type") ?? "";
-    if (!publicRes.ok) throw new Error(`Excel download (${dlRes.status}): ${gatewayError}`);
+    if (!publicRes.ok) throw new Error(`Excel download (${publicRes.status}): ${gatewayError}`);
     if (!contentType.includes("text/html")) {
       buf = new Uint8Array(await publicRes.arrayBuffer());
     } else {
       const html = await publicRes.text();
       const wopi = extractWopiContext(html);
-      if (!wopi?.FileGetUrl) throw new Error(`Excel download (${dlRes.status}): ${gatewayError}`);
+      if (!wopi?.FileGetUrl) throw new Error(`Excel download: ${gatewayError}`);
       if (wopi.FileName) name = wopi.FileName;
       const fileRes = await fetchAllowedExcelUrl(wopi.FileGetUrl, {
         headers: { accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*" },
