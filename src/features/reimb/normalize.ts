@@ -11,21 +11,28 @@ export function parseDate(s: string | null | undefined): Date | null {
     const dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
     if (!isNaN(dt.getTime())) return dt;
   }
-  // ISO yyyy-mm-dd[...]
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
-    const iso = new Date(t);
-    if (!isNaN(iso.getTime())) return iso;
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    const dt = new Date(Date.UTC(year, month - 1, day));
+    if (dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day)
+      return dt;
   }
-  // dd/mm/yyyy or dd-mm-yyyy
   const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
   if (m) {
-    const [, d, mo, y] = m;
+    const [, a, b, y] = m;
     const year = y.length === 2 ? 2000 + Number(y) : Number(y);
-    const dt = new Date(year, Number(mo) - 1, Number(d));
-    if (!isNaN(dt.getTime())) return dt;
+    const first = Number(a);
+    const second = Number(b);
+    const dayFirst = first > 12 || second > 12;
+    const day = dayFirst ? first : second;
+    const month = dayFirst ? second : first;
+    const dt = new Date(Date.UTC(year, month - 1, day));
+    if (dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day)
+      return dt;
   }
-  const fallback = new Date(t);
-  if (!isNaN(fallback.getTime())) return fallback;
   return null;
 }
 
@@ -66,11 +73,12 @@ export function normalize(headers: string[], rows: string[][], mapping: Mapping)
   };
   const get = (r: string[], k: number) => (k >= 0 ? r[k] ?? "" : "");
   const out: Reimbursement[] = [];
+  const mappedKeys = Object.values(mapping).filter(Boolean).join("|");
   rows.forEach((r, n) => {
     const date = parseDate(get(r, i.date));
     if (!date) return;
     out.push({
-      id: `r-${n}-${date.getTime()}`,
+      id: `r-${n}-${date.toISOString().slice(0, 10)}-${Math.abs(`${mappedKeys}|${r.join("|")}`.split("").reduce((h, ch) => ((h << 5) - h + ch.charCodeAt(0)) | 0, 0))}`,
       date,
       amount: parseAmount(get(r, i.amount)),
       department: get(r, i.department) || "—",
