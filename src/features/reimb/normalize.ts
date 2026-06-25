@@ -26,9 +26,9 @@ export function parseDate(s: string | null | undefined): Date | null {
     const year = y.length === 2 ? 2000 + Number(y) : Number(y);
     const first = Number(a);
     const second = Number(b);
-    const dayFirst = first > 12 || second > 12;
-    const day = dayFirst ? first : second;
-    const month = dayFirst ? second : first;
+    const monthFirst = first <= 12 && second > 12;
+    const day = monthFirst ? second : first;
+    const month = monthFirst ? first : second;
     const dt = new Date(Date.UTC(year, month - 1, day));
     if (dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day)
       return dt;
