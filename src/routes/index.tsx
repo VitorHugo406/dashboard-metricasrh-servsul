@@ -1348,14 +1348,14 @@ function ExportView({
       };
       const guess: Mapping = {};
       CANONICAL_FIELDS.forEach((f) => {
-        const current = mapping[f.key];
-        if (current && headers.includes(current)) {
-          guess[f.key] = current;
-          return;
-        }
         const preferred = guessHeader(f.key, headers);
         if (preferred) {
           guess[f.key] = preferred;
+          return;
+        }
+        const current = mapping[f.key];
+        if (current && headers.includes(current)) {
+          guess[f.key] = current;
           return;
         }
         const match = headers.find((h) => {
