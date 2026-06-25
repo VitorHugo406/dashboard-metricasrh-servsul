@@ -14,6 +14,32 @@ type ConfigRow = {
   last_sync_error: string | null;
 };
 
+function resolveDefinitiveReembolsoMapping(headers: string[], saved: Mapping): Mapping {
+  const normalizeHeader = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  const candidates = headers.map((header) => ({ header, value: normalizeHeader(header) }));
+  const first = (patterns: RegExp[]) =>
+    candidates.find(({ value }) => patterns.some((pattern) => pattern.test(value)))?.header;
+  const hasDefinitiveShape = !!first([/^pagamento$/]) && !!first([/^valor\s*reembolso$/]);
+  if (!hasDefinitiveShape) return saved;
+  return {
+    ...saved,
+    date: first([/^pagamento$/]) ?? saved.date,
+    amount: first([/^valor\s*reembolso$/]) ?? saved.amount,
+    employee: first([/^nome$/]) ?? saved.employee,
+    department: first([/^departamento$/]) ?? saved.department,
+    category: first([/^tipo\s*reembolso$/]) ?? saved.category,
+    status: first([/^status$/]) ?? saved.status,
+    description: first([/^motivo$/]) ?? saved.description,
+    client: first([/^cliente$/]) ?? saved.client,
+    submittedAt: first([/^data\s*da\s*sol\.?$/]) ?? saved.submittedAt,
+  };
+}
+
 export const getSheetConfigFn = createServerFn({ method: "GET" }).handler(
   async (): Promise<Config | null> => getSheetConfig(),
 );
@@ -40,6 +66,8 @@ export const saveSheetConfigFn = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true; config: Config }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const meta = await getSpreadsheetMetaData(data.url);
+    const selectedHeaders = meta.sheets.find((s) => s.title === data.sheet)?.headers ?? [];
+    const mapping = resolveDefinitiveReembolsoMapping(selectedHeaders, data.mapping);
     const row = {
       id: true,
       source_type: meta.sourceType,
@@ -47,7 +75,7 @@ export const saveSheetConfigFn = createServerFn({ method: "POST" })
       spreadsheet_id: meta.spreadsheetId,
       spreadsheet_title: meta.title,
       sheet_name: data.sheet,
-      mapping: data.mapping,
+      mapping,
       excel_drive_id: meta.excelDriveId ?? null,
       excel_item_id: meta.excelItemId ?? null,
     };
@@ -83,7 +111,7 @@ export async function refreshReimbursements(): Promise<{
       row.spreadsheet_id,
       row.sheet_name,
     );
-    const items = normalize(raw.headers, raw.rows, row.mapping);
+    const items = normalize(raw.headers, raw.rows, resolveDefinitiveReembolsoMapping(raw.headers, row.mapping));
     // Replace cache
     await supabaseAdmin.from("reimbursement_cache").delete().neq("id", "__never__");
     if (items.length) {
