@@ -92,8 +92,9 @@ async function fetchAllowedExcelUrl(input: string, init?: RequestInit, redirects
     if (redirects >= 6) throw new Error("Redirecionamentos demais ao abrir o link do Excel.");
     const location = res.headers.get("location");
     if (!location) return res;
-    const next = new URL(location, url).toString();
-    return fetchAllowedExcelUrl(next, init, redirects + 1);
+    const next = new URL(location, url);
+    console.log("redirect host", next.hostname);
+    return fetchAllowedExcelUrl(next.toString(), init, redirects + 1);
   }
   return res;
 }
