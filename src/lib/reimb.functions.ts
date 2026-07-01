@@ -41,9 +41,9 @@ function resolveDefinitiveReembolsoMapping(headers: string[], saved: Mapping): M
   };
 }
 
-export const getSheetConfigFn = createServerFn({ method: "GET" }).handler(
-  async (): Promise<Config | null> => getSheetConfig(),
-);
+export const getSheetConfigFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async (): Promise<Config | null> => getSheetConfig());
 
 export async function getSheetConfig(): Promise<Config | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
