@@ -11,6 +11,18 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { supabase } from "@/integrations/supabase/client";
+
+function ensureAnonymousSession() {
+  if (typeof window === "undefined") return;
+  supabase.auth.getSession().then(({ data }) => {
+    if (!data.session) {
+      supabase.auth.signInAnonymously().catch((err) => {
+        console.error("Anonymous sign-in failed", err);
+      });
+    }
+  });
+}
 
 function NotFoundComponent() {
   return (
