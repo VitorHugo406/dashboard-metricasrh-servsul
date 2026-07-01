@@ -806,7 +806,9 @@ function MonthlyChart({
   data: { label: string; realizado: number; pendente: number; total: number }[];
 }) {
   const max = Math.max(1, ...data.map((d) => d.total));
-  const barHeight = (value: number) => (value > 0 ? `${Math.max(4, (value / max) * 100)}%` : "0%");
+  const chartHeight = 288;
+  const barHeight = (value: number) =>
+    value > 0 ? `${Math.max(4, (value / max) * chartHeight)}px` : "0px";
   if (!data.length)
     return (
       <div className="py-8 text-center text-sm text-ep-on-surface-variant">
@@ -814,11 +816,11 @@ function MonthlyChart({
       </div>
     );
   return (
-    <div className="flex h-80 items-stretch gap-3 px-2 md:h-96 md:gap-6">
+    <div className="flex h-80 items-end gap-3 px-2 md:h-96 md:gap-6">
       {data.map((d) => (
-        <div key={d.label} className="flex h-full flex-1 flex-col items-center gap-2">
+        <div key={d.label} className="flex flex-1 flex-col items-center gap-2">
           <div
-            className="flex min-h-0 w-full flex-1 items-end justify-center gap-1.5"
+            className="flex h-72 w-full items-end justify-center gap-1.5"
           >
             <div
               title={`Realizado ${fmtBRL(d.realizado)}`}
