@@ -805,42 +805,110 @@ function MonthlyChart({
 }: {
   data: { label: string; realizado: number; pendente: number; total: number }[];
 }) {
-  const max = Math.max(1, ...data.map((d) => d.total));
-  const chartHeight = 288;
-  const barHeight = (value: number) =>
-    value > 0 ? `${Math.max(4, (value / max) * chartHeight)}px` : "0px";
   if (!data.length)
     return (
       <div className="py-8 text-center text-sm text-ep-on-surface-variant">
         Sem dados no período.
       </div>
     );
+  const W = 800;
+  const H = 320;
+  const PAD_L = 56;
+  const PAD_R = 16;
+  const PAD_T = 16;
+  const PAD_B = 36;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  const max = Math.max(1, ...data.map((d) => Math.max(d.total, d.realizado, d.pendente)));
+  const n = data.length;
+  const xAt = (i: number) => PAD_L + (n === 1 ? innerW / 2 : (i * innerW) / (n - 1));
+  const yAt = (v: number) => PAD_T + innerH - (v / max) * innerH;
+  const path = (key: "realizado" | "pendente" | "total") =>
+    data.map((d, i) => `${i === 0 ? "M" : "L"}${xAt(i)},${yAt(d[key])}`).join(" ");
+  const gridLines = 4;
+  const ticks = Array.from({ length: gridLines + 1 }, (_, i) => (max * i) / gridLines);
+  const fmtY = (v: number) =>
+    v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : String(Math.round(v));
+  const series: { key: "total" | "realizado" | "pendente"; color: string; label: string }[] = [
+    { key: "total", color: "var(--color-ep-primary)", label: "Total" },
+    { key: "realizado", color: "var(--color-ep-success)", label: "Realizado" },
+    { key: "pendente", color: "var(--color-ep-tertiary)", label: "Pendente" },
+  ];
   return (
-    <div className="flex h-80 items-end gap-3 px-2 md:h-96 md:gap-6">
-      {data.map((d) => (
-        <div key={d.label} className="flex flex-1 flex-col items-center gap-2">
-          <div
-            className="flex h-72 w-full items-end justify-center gap-1.5"
+    <div className="w-full">
+      <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-ep-on-surface-variant">
+        {series.map((s) => (
+          <span key={s.key} className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-3 rounded" style={{ background: s.color }} />
+            {s.label}
+          </span>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-72 w-full md:h-96" preserveAspectRatio="none">
+        {ticks.map((t, i) => {
+          const y = yAt(t);
+          return (
+            <g key={i}>
+              <line
+                x1={PAD_L}
+                x2={W - PAD_R}
+                y1={y}
+                y2={y}
+                stroke="var(--color-ep-outline-variant)"
+                strokeDasharray="3 3"
+                opacity={0.5}
+              />
+              <text
+                x={PAD_L - 8}
+                y={y + 4}
+                textAnchor="end"
+                fontSize="10"
+                fill="var(--color-ep-on-surface-variant)"
+              >
+                {fmtY(t)}
+              </text>
+            </g>
+          );
+        })}
+        {series.map((s) => (
+          <path
+            key={s.key}
+            d={path(s.key)}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={2.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ))}
+        {series.map((s) =>
+          data.map((d, i) => (
+            <circle
+              key={`${s.key}-${i}`}
+              cx={xAt(i)}
+              cy={yAt(d[s.key])}
+              r={3.5}
+              fill="var(--color-ep-surface)"
+              stroke={s.color}
+              strokeWidth={2}
+            >
+              <title>{`${s.label} — ${d.label}: ${fmtBRL(d[s.key])}`}</title>
+            </circle>
+          )),
+        )}
+        {data.map((d, i) => (
+          <text
+            key={`x-${i}`}
+            x={xAt(i)}
+            y={H - 12}
+            textAnchor="middle"
+            fontSize="11"
+            fill="var(--color-ep-on-surface-variant)"
           >
-            <div
-              title={`Realizado ${fmtBRL(d.realizado)}`}
-              className="w-3 md:w-4 rounded-t bg-ep-success"
-              style={{ height: barHeight(d.realizado) }}
-            />
-            <div
-              title={`Pendente ${fmtBRL(d.pendente)}`}
-              className="w-3 md:w-4 rounded-t bg-ep-tertiary"
-              style={{ height: barHeight(d.pendente) }}
-            />
-            <div
-              title={`Total ${fmtBRL(d.total)}`}
-              className="w-3 md:w-4 rounded-t bg-ep-primary"
-              style={{ height: barHeight(d.total) }}
-            />
-          </div>
-          <span className="text-[10px] md:text-xs text-ep-on-surface-variant">{d.label}</span>
-        </div>
-      ))}
+            {d.label}
+          </text>
+        ))}
+      </svg>
     </div>
   );
 }
