@@ -324,6 +324,7 @@ export async function getSpreadsheetMetaData(url: string): Promise<SheetMeta> {
 
 /* ---------------- Public API ---------------- */
 export const getSpreadsheetMeta = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }): Promise<SheetMeta> => {
     return getSpreadsheetMetaData(data.url);
