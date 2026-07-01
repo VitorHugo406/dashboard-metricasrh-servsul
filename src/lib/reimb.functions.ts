@@ -176,8 +176,7 @@ export const getReimbursementCacheFn = createServerFn({ method: "GET" })
       .limit(10000);
     if (error) throw new Error(error.message);
     return (data ?? []) as RawReimbursementRow[];
-  },
-);
+  });
 
 export type RawReimbursementRow = {
   id: string;
