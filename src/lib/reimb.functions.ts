@@ -93,9 +93,11 @@ export const saveSheetConfigFn = createServerFn({ method: "POST" })
     return { ok: true, config: cfg! };
   });
 
-export const refreshReimbursementsFn = createServerFn({ method: "POST" }).handler(
-  async (): Promise<{ ok: boolean; count: number; error?: string }> => refreshReimbursements(),
-);
+export const refreshReimbursementsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(
+    async (): Promise<{ ok: boolean; count: number; error?: string }> => refreshReimbursements(),
+  );
 
 export async function refreshReimbursements(): Promise<{
   ok: boolean;
