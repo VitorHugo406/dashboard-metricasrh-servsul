@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { SheetMeta, SourceType } from "@/features/reimb/types";
 
 const GOOGLE_GW = "https://connector-gateway.lovable.dev/google_sheets/v4";
