@@ -63,6 +63,7 @@ export async function getSheetConfig(): Promise<Config | null> {
 }
 
 export const saveSheetConfigFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { url: string; sheet: string; mapping: Mapping }) => d)
   .handler(async ({ data }): Promise<{ ok: true; config: Config }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
