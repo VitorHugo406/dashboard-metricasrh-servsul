@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { fetchSheetData, detectSource, getSpreadsheetMetaData } from "./sheets.functions";
 import { normalize, parseDate, toISODate } from "@/features/reimb/normalize";
 import type { Config, Mapping, Reimbursement, SourceType } from "@/features/reimb/types";
