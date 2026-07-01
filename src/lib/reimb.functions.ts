@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { fetchSheetData, detectSource, getSpreadsheetMetaData } from "./sheets.functions";
 import { normalize, parseDate, toISODate } from "@/features/reimb/normalize";
 import type { Config, Mapping, Reimbursement, SourceType } from "@/features/reimb/types";
@@ -40,9 +41,9 @@ function resolveDefinitiveReembolsoMapping(headers: string[], saved: Mapping): M
   };
 }
 
-export const getSheetConfigFn = createServerFn({ method: "GET" }).handler(
-  async (): Promise<Config | null> => getSheetConfig(),
-);
+export const getSheetConfigFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async (): Promise<Config | null> => getSheetConfig());
 
 export async function getSheetConfig(): Promise<Config | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -62,6 +63,7 @@ export async function getSheetConfig(): Promise<Config | null> {
 }
 
 export const saveSheetConfigFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { url: string; sheet: string; mapping: Mapping }) => d)
   .handler(async ({ data }): Promise<{ ok: true; config: Config }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -91,9 +93,11 @@ export const saveSheetConfigFn = createServerFn({ method: "POST" })
     return { ok: true, config: cfg! };
   });
 
-export const refreshReimbursementsFn = createServerFn({ method: "POST" }).handler(
-  async (): Promise<{ ok: boolean; count: number; error?: string }> => refreshReimbursements(),
-);
+export const refreshReimbursementsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(
+    async (): Promise<{ ok: boolean; count: number; error?: string }> => refreshReimbursements(),
+  );
 
 export async function refreshReimbursements(): Promise<{
   ok: boolean;
@@ -152,14 +156,16 @@ export async function refreshReimbursements(): Promise<{
 }
 
 export const probeSheetFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }) => {
     detectSource(data.url);
     return getSpreadsheetMetaData(data.url);
   });
 
-export const getReimbursementCacheFn = createServerFn({ method: "GET" }).handler(
-  async (): Promise<RawReimbursementRow[]> => {
+export const getReimbursementCacheFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async (): Promise<RawReimbursementRow[]> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("reimbursement_cache")
@@ -170,8 +176,7 @@ export const getReimbursementCacheFn = createServerFn({ method: "GET" }).handler
       .limit(10000);
     if (error) throw new Error(error.message);
     return (data ?? []) as RawReimbursementRow[];
-  },
-);
+  });
 
 export type RawReimbursementRow = {
   id: string;
