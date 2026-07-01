@@ -156,14 +156,16 @@ export async function refreshReimbursements(): Promise<{
 }
 
 export const probeSheetFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }) => {
     detectSource(data.url);
     return getSpreadsheetMetaData(data.url);
   });
 
-export const getReimbursementCacheFn = createServerFn({ method: "GET" }).handler(
-  async (): Promise<RawReimbursementRow[]> => {
+export const getReimbursementCacheFn = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async (): Promise<RawReimbursementRow[]> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("reimbursement_cache")
