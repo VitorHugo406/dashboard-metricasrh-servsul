@@ -814,12 +814,11 @@ function MonthlyChart({
       </div>
     );
   return (
-    <div className="flex h-80 md:h-96 items-end gap-3 md:gap-6 px-2">
+    <div className="flex h-80 items-stretch gap-3 px-2 md:h-96 md:gap-6">
       {data.map((d) => (
-        <div key={d.label} className="flex flex-1 flex-col items-center gap-2">
+        <div key={d.label} className="flex h-full flex-1 flex-col items-center gap-2">
           <div
-            className="flex h-72 md:h-88 w-full items-end justify-center gap-1.5"
-            style={{ height: "calc(100% - 1.5rem)" }}
+            className="flex min-h-0 w-full flex-1 items-end justify-center gap-1.5"
           >
             <div
               title={`Realizado ${fmtBRL(d.realizado)}`}
