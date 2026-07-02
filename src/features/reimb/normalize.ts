@@ -61,10 +61,16 @@ export function parseAmount(s: string | null | undefined): number {
 }
 
 export function parseStatus(s: string | null | undefined): ReimbStatus {
-  const v = String(s ?? "").toLowerCase().trim();
-  // "Realizado" = paid out
-  if (/realiz|pago|paid|conclu[ií]d|efetuad|liquidad|finaliz/.test(v)) return "realizado";
-  // default = pendente
+  const v = String(s ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  if (!v) return "pendente";
+  // "Realizado" = já pago
+  if (/realiz|pago|paid|conclu|efetuad|liquidad|finaliz|quitad|ok\b|sim\b|true|1$/.test(v))
+    return "realizado";
+  // Pendente = ainda não pago (default para "pendente", "em aberto", "aguardando", "a pagar", "aprovado", etc.)
   return "pendente";
 }
 
