@@ -265,6 +265,27 @@ async function downloadAndParseExcel(url: string): Promise<WorkbookCache> {
       gatewayError = await dlRes.text();
     }
   }
+  // Anonymous fallback for OneDrive Personal public shares.
+  // api.onedrive.com resolves "shares/u!<b64url>" without auth when the link is
+  // public ("anyone with the link"). This is the reliable path for 1drv.ms /
+  // onedrive.live.com personal (MSA) accounts, which Graph often rejects with
+  // accessDenied even for the file owner's own workspace connector.
+  if (!buf) {
+    try {
+      const anonRes = await fetch(
+        `https://api.onedrive.com/v1.0/shares/${shareId}/root/content`,
+        { redirect: "follow", headers: { accept: "*/*" } },
+      );
+      if (anonRes.ok) {
+        buf = new Uint8Array(await anonRes.arrayBuffer());
+      } else if (!gatewayError || gatewayError.startsWith("Microsoft Excel")) {
+        gatewayError = `OneDrive anon (${anonRes.status}): ${await anonRes.text()}`;
+      }
+    } catch (e) {
+      /* try next fallback */
+      if (!gatewayError) gatewayError = e instanceof Error ? e.message : String(e);
+    }
+  }
   if (!buf) {
     const publicRes = await fetchAllowedExcelUrl(url);
     const contentType = publicRes.headers.get("content-type") ?? "";
