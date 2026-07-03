@@ -161,15 +161,21 @@ export const probeSheetFn = createServerFn({ method: "POST" })
 export const getReimbursementCacheFn = createServerFn({ method: "GET" })
   .handler(async (): Promise<RawReimbursementRow[]> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
-      .from("reimbursement_cache")
-      .select(
-        "id, date, amount, department, employee, client, category, status, description, observacao, submitted_at",
-      )
-      .order("date", { ascending: false })
-      .limit(10000);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as RawReimbursementRow[];
+    const pageSize = 1000;
+    const rows: RawReimbursementRow[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabaseAdmin
+        .from("reimbursement_cache")
+        .select(
+          "id, date, amount, department, employee, client, category, status, description, observacao, submitted_at",
+        )
+        .order("date", { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      rows.push(...((data ?? []) as RawReimbursementRow[]));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
   });
 
 export type RawReimbursementRow = {
