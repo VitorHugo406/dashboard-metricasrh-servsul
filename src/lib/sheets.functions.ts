@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { SheetMeta, SourceType } from "@/features/reimb/types";
 
 const GOOGLE_GW = "https://connector-gateway.lovable.dev/google_sheets/v4";
@@ -345,7 +344,6 @@ export async function getSpreadsheetMetaData(url: string): Promise<SheetMeta> {
 
 /* ---------------- Public API ---------------- */
 export const getSpreadsheetMeta = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }): Promise<SheetMeta> => {
     return getSpreadsheetMetaData(data.url);
