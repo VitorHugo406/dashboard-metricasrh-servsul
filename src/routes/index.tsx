@@ -1371,6 +1371,10 @@ function ExportView({
   const refresh = useServerFn(refreshReimbursementsFn);
   const [sheet, setSheet] = useState(config.sheet ?? "");
   const [mapping, setMapping] = useState<Mapping>(config.mapping ?? {});
+  const savedHeaders = useMemo(
+    () => Array.from(new Set(Object.values(mapping).filter((value): value is string => Boolean(value)))),
+    [mapping],
+  );
 
   useEffect(() => {
     setUrl(config.spreadsheetUrl ?? "");
@@ -1454,15 +1458,7 @@ function ExportView({
     }
   };
 
-  // Auto-detect on mount if URL exists but no meta yet
-  useEffect(() => {
-    if (config.spreadsheetUrl && !meta) {
-      detectMeta();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.spreadsheetUrl]);
-
-  const sheetHeaders = meta?.sheets.find((s) => s.title === sheet)?.headers ?? [];
+  const sheetHeaders = meta?.sheets.find((s) => s.title === sheet)?.headers ?? savedHeaders;
   const canSave =
     !!url &&
     !!sheet &&
@@ -1538,10 +1534,13 @@ function ExportView({
           </button>
         </div>
         {err && <p className="mt-2 text-sm text-ep-error">{err}</p>}
-        {meta && (
+        {(meta || config.spreadsheetTitle) && (
           <div className="mt-3 text-xs text-ep-on-surface-variant">
-            Conectado a <span className="font-semibold text-ep-on-surface">{meta.title}</span> (
-            {sourceLabel}) — {meta.sheets.length} aba(s) detectada(s).
+            Conectado a{" "}
+            <span className="font-semibold text-ep-on-surface">
+              {meta?.title ?? config.spreadsheetTitle}
+            </span>{" "}
+            ({sourceLabel}){meta ? ` — ${meta.sheets.length} aba(s) detectada(s).` : "."}
           </div>
         )}
         {config.lastSyncAt && (
@@ -1557,7 +1556,7 @@ function ExportView({
         )}
       </Card>
 
-      {meta && (
+      {(meta || config.spreadsheetUrl) && (
         <Card>
           <CardTitle
             title="Mapear colunas"
@@ -1570,11 +1569,15 @@ function ExportView({
               onChange={(e) => setSheet(e.target.value)}
               className="rounded-md border border-ep-outline-variant bg-ep-surface-lowest px-2 py-1.5"
             >
-              {meta.sheets.map((s) => (
-                <option key={String(s.id)} value={s.title}>
-                  {s.title} ({s.headers.length} colunas)
-                </option>
-              ))}
+              {meta ? (
+                meta.sheets.map((s) => (
+                  <option key={String(s.id)} value={s.title}>
+                    {s.title} ({s.headers.length} colunas)
+                  </option>
+                ))
+              ) : (
+                <option value={sheet}>{sheet}</option>
+              )}
             </select>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

@@ -10,6 +10,8 @@ type ConfigRow = {
   spreadsheet_title: string | null;
   sheet_name: string;
   mapping: Mapping;
+  excel_drive_id?: string | null;
+  excel_item_id?: string | null;
   last_sync_at: string | null;
   last_sync_error: string | null;
 };
@@ -64,19 +66,29 @@ export const saveSheetConfigFn = createServerFn({ method: "POST" })
   .inputValidator((d: { url: string; sheet: string; mapping: Mapping }) => d)
   .handler(async ({ data }): Promise<{ ok: true; config: Config }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const meta = await getSpreadsheetMetaData(data.url);
-    const selectedHeaders = meta.sheets.find((s) => s.title === data.sheet)?.headers ?? [];
+    const { data: currentConfig } = await supabaseAdmin.from("sheet_config").select("*").maybeSingle();
+    const current = currentConfig as ConfigRow | null;
+    let meta: Awaited<ReturnType<typeof getSpreadsheetMetaData>> | null = null;
+    try {
+      meta = await getSpreadsheetMetaData(data.url);
+    } catch (e) {
+      if (!current) throw e;
+      console.warn("metadata refresh skipped; keeping saved workbook settings", e);
+    }
+    const selectedHeaders =
+      meta?.sheets.find((s) => s.title === data.sheet)?.headers ??
+      Object.values(data.mapping).filter((value): value is string => Boolean(value));
     const mapping = resolveDefinitiveReembolsoMapping(selectedHeaders, data.mapping);
     const row = {
       id: true,
-      source_type: meta.sourceType,
+      source_type: meta?.sourceType ?? current?.source_type ?? detectSource(data.url),
       spreadsheet_url: data.url,
-      spreadsheet_id: meta.spreadsheetId,
-      spreadsheet_title: meta.title,
+      spreadsheet_id: meta?.spreadsheetId ?? current?.spreadsheet_id ?? data.url,
+      spreadsheet_title: meta?.title ?? current?.spreadsheet_title ?? "REEMBOLSO - 2026.xlsx",
       sheet_name: data.sheet,
       mapping,
-      excel_drive_id: meta.excelDriveId ?? null,
-      excel_item_id: meta.excelItemId ?? null,
+      excel_drive_id: meta?.excelDriveId ?? current?.excel_drive_id ?? null,
+      excel_item_id: meta?.excelItemId ?? current?.excel_item_id ?? null,
     };
     const { error } = await supabaseAdmin.from("sheet_config").upsert(row, { onConflict: "id" });
     if (error) throw new Error(`Salvar config: ${error.message}`);
