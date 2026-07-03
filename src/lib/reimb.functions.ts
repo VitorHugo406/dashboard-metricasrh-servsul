@@ -164,7 +164,6 @@ export const probeSheetFn = createServerFn({ method: "POST" })
   });
 
 export const getReimbursementCacheFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
   .handler(async (): Promise<RawReimbursementRow[]> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
