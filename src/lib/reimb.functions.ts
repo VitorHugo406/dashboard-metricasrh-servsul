@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { fetchSheetData, detectSource, getSpreadsheetMetaData } from "./sheets.functions";
 import { normalize, parseDate, toISODate } from "@/features/reimb/normalize";
 import type { Config, Mapping, Reimbursement, SourceType } from "@/features/reimb/types";
@@ -42,7 +41,6 @@ function resolveDefinitiveReembolsoMapping(headers: string[], saved: Mapping): M
 }
 
 export const getSheetConfigFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
   .handler(async (): Promise<Config | null> => getSheetConfig());
 
 export async function getSheetConfig(): Promise<Config | null> {
@@ -63,7 +61,6 @@ export async function getSheetConfig(): Promise<Config | null> {
 }
 
 export const saveSheetConfigFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: { url: string; sheet: string; mapping: Mapping }) => d)
   .handler(async ({ data }): Promise<{ ok: true; config: Config }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -94,7 +91,6 @@ export const saveSheetConfigFn = createServerFn({ method: "POST" })
   });
 
 export const refreshReimbursementsFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .handler(
     async (): Promise<{ ok: boolean; count: number; error?: string }> => refreshReimbursements(),
   );
@@ -156,7 +152,6 @@ export async function refreshReimbursements(): Promise<{
 }
 
 export const probeSheetFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }) => {
     detectSource(data.url);
@@ -166,15 +161,21 @@ export const probeSheetFn = createServerFn({ method: "POST" })
 export const getReimbursementCacheFn = createServerFn({ method: "GET" })
   .handler(async (): Promise<RawReimbursementRow[]> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
-      .from("reimbursement_cache")
-      .select(
-        "id, date, amount, department, employee, client, category, status, description, observacao, submitted_at",
-      )
-      .order("date", { ascending: false })
-      .limit(10000);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as RawReimbursementRow[];
+    const pageSize = 1000;
+    const rows: RawReimbursementRow[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabaseAdmin
+        .from("reimbursement_cache")
+        .select(
+          "id, date, amount, department, employee, client, category, status, description, observacao, submitted_at",
+        )
+        .order("date", { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      rows.push(...((data ?? []) as RawReimbursementRow[]));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
   });
 
 export type RawReimbursementRow = {
