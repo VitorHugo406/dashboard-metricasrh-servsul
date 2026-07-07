@@ -4,6 +4,8 @@ import { parseDate } from "@/features/reimb/normalize";
 import type { Config, Mapping, Reimbursement } from "@/features/reimb/types";
 import type { RawReimbursementRow } from "./reimb-sync.server";
 
+export type { RawReimbursementRow } from "./reimb-sync.server";
+
 export const getSheetConfigFn = createServerFn({ method: "GET" })
   .handler(async (): Promise<Config | null> => {
     const { getSheetConfig } = await import("./reimb-sync.server");
