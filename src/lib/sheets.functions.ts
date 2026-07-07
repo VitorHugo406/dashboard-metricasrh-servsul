@@ -189,6 +189,100 @@ type WorkbookCache = { name: string; sheets: Record<string, string[][]>; fetched
 const _wbCache = new Map<string, WorkbookCache>();
 const WB_TTL_MS = 60_000; // dedupe within 1 min for meta+rows on the same URL
 
+function decodeXml(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function getAttr(xml: string, attr: string): string | undefined {
+  return xml.match(new RegExp(`${attr}="([^"]*)"`))?.[1];
+}
+
+function parseSharedStrings(xml: string | undefined): string[] {
+  if (!xml) return [];
+  const out: string[] = [];
+  for (const si of xml.matchAll(/<si\b[\s\S]*?<\/si>/g)) {
+    const text = [...si[0].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)]
+      .map((m) => decodeXml(m[1]))
+      .join("");
+    out.push(text);
+  }
+  return out;
+}
+
+function parseWorkbookSheets(workbookXml: string, relsXml: string): Array<{ name: string; path: string }> {
+  const rels = new Map<string, string>();
+  for (const rel of relsXml.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = getAttr(rel[0], "Id");
+    const target = getAttr(rel[0], "Target");
+    if (!id || !target || !target.includes("worksheets/")) continue;
+    rels.set(id, target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\.\//, "")}`);
+  }
+  const sheets: Array<{ name: string; path: string }> = [];
+  for (const sheet of workbookXml.matchAll(/<sheet\b[^>]*>/g)) {
+    const name = getAttr(sheet[0], "name");
+    const relId = getAttr(sheet[0], "r:id");
+    const path = relId ? rels.get(relId) : undefined;
+    if (name && path) sheets.push({ name: decodeXml(name), path });
+  }
+  return sheets;
+}
+
+function columnIndex(cellRef: string): number {
+  const letters = cellRef.match(/^[A-Z]+/i)?.[0]?.toUpperCase() ?? "A";
+  let n = 0;
+  for (const ch of letters) n = n * 26 + ch.charCodeAt(0) - 64;
+  return n - 1;
+}
+
+function parseCellValue(cellXml: string, sharedStrings: string[]): string {
+  const type = getAttr(cellXml, "t");
+  if (type === "inlineStr") {
+    return decodeXml(
+      [...cellXml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => m[1]).join(""),
+    );
+  }
+  const value = cellXml.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? "";
+  if (type === "s") return sharedStrings[Number(value)] ?? "";
+  if (type === "b") return value === "1" ? "TRUE" : "FALSE";
+  return decodeXml(value);
+}
+
+function parseWorksheetRows(xml: string, sharedStrings: string[]): string[][] {
+  const rows: string[][] = [];
+  for (const rowMatch of xml.matchAll(/<row\b[^>]*>[\s\S]*?<\/row>/g)) {
+    const row: string[] = [];
+    for (const cellMatch of rowMatch[0].matchAll(/<c\b[^>]*(?:\/>|>[\s\S]*?<\/c>)/g)) {
+      const cell = cellMatch[0];
+      const ref = getAttr(cell, "r") ?? "A1";
+      row[columnIndex(ref)] = parseCellValue(cell, sharedStrings);
+    }
+    while (row.length && (row[row.length - 1] ?? "") === "") row.pop();
+    rows.push(row.map((value) => value ?? ""));
+  }
+  return rows;
+}
+
+async function parseXlsxWorkbook(buf: Uint8Array, fallbackName: string): Promise<WorkbookCache> {
+  const { unzipSync, strFromU8 } = await import("fflate");
+  const zip = unzipSync(buf);
+  const text = (path: string) => (zip[path] ? strFromU8(zip[path]) : undefined);
+  const workbookXml = text("xl/workbook.xml");
+  const relsXml = text("xl/_rels/workbook.xml.rels");
+  if (!workbookXml || !relsXml) throw new Error("A planilha .xlsx não possui estrutura válida.");
+  const sharedStrings = parseSharedStrings(text("xl/sharedStrings.xml"));
+  const sheets: Record<string, string[][]> = {};
+  for (const sheet of parseWorkbookSheets(workbookXml, relsXml)) {
+    const sheetXml = text(sheet.path);
+    if (sheetXml) sheets[sheet.name] = parseWorksheetRows(sheetXml, sharedStrings);
+  }
+  return { name: fallbackName, sheets, fetchedAt: Date.now() };
+}
+
 function columnLabel(index: number): string {
   let n = index + 1;
   let label = "";
@@ -306,15 +400,7 @@ async function downloadAndParseExcel(url: string): Promise<WorkbookCache> {
   if (!buf || buf.length < 4 || buf[0] !== 0x50 || buf[1] !== 0x4b) {
     throw new Error("O arquivo baixado não parece ser uma planilha .xlsx válida.");
   }
-  const XLSX = await import("xlsx");
-  const wb = XLSX.read(buf, { type: "array" });
-  const sheets: Record<string, string[][]> = {};
-  for (const sheetName of wb.SheetNames) {
-    const ws = wb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: "" });
-    sheets[sheetName] = rows.map((r) => (r as unknown[]).map((c) => (c == null ? "" : String(c))));
-  }
-  const entry: WorkbookCache = { name, sheets, fetchedAt: Date.now() };
+  const entry = await parseXlsxWorkbook(buf, name);
   _wbCache.set(url, entry);
   return entry;
 }

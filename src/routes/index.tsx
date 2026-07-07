@@ -101,13 +101,15 @@ function App() {
     if (!config.spreadsheetId) return;
     const tick = async () => {
       try {
-        await refresh();
+        const result = await refresh();
+        if (!result.ok) throw new Error(result.error ?? "Falha ao sincronizar");
         qc.invalidateQueries({ queryKey: ["reimb-cache"] });
         qc.invalidateQueries({ queryKey: ["sheet-config"] });
       } catch {
         /* ignore */
       }
     };
+    void tick();
     const id = setInterval(tick, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [config.spreadsheetId, refresh, qc]);
@@ -132,7 +134,11 @@ function App() {
           lastSync={config.lastSyncAt}
           refetching={itemsQuery.isFetching}
           onRefresh={() =>
-            refresh().then(() => qc.invalidateQueries({ queryKey: ["reimb-cache"] }))
+            refresh().then((result) => {
+              if (!result.ok) throw new Error(result.error ?? "Falha ao sincronizar");
+              qc.invalidateQueries({ queryKey: ["reimb-cache"] });
+              qc.invalidateQueries({ queryKey: ["sheet-config"] });
+            })
           }
           dark={dark}
           setDark={setDark}
@@ -1475,7 +1481,11 @@ function ExportView({
   });
 
   const refreshMutation = useMutation({
-    mutationFn: async () => refresh(),
+    mutationFn: async () => {
+      const result = await refresh();
+      if (!result.ok) throw new Error(result.error ?? "Falha ao sincronizar");
+      return result;
+    },
     onSuccess: () => onSaved(),
   });
 
@@ -1632,6 +1642,16 @@ function ExportView({
           )}
           {saveMutation.isError && (
             <p className="mt-2 text-sm text-ep-error">{(saveMutation.error as Error).message}</p>
+          )}
+          {refreshMutation.isError && (
+            <p className="mt-2 text-sm text-ep-error">
+              {(refreshMutation.error as Error).message}
+            </p>
+          )}
+          {refreshMutation.isSuccess && (
+            <p className="mt-2 text-sm text-ep-success">
+              Sincronização concluída: {refreshMutation.data.count} registros atualizados.
+            </p>
           )}
           {saveMutation.isSuccess && (
             <p className="mt-2 text-sm text-ep-success">Configuração salva. Dados sincronizados.</p>
