@@ -1,7 +1,7 @@
 import { fetchSheetData, detectSource, getSpreadsheetMetaData } from "./sheets.functions";
 import { normalize, toISODate } from "@/features/reimb/normalize";
 import type { Config, Mapping, SourceType } from "@/features/reimb/types";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { db as supabaseAdmin } from "./db.server";
 
 type ConfigRow = {
   source_type: SourceType;
