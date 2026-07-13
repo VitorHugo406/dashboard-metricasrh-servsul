@@ -5,10 +5,21 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
+const FALLBACK_SUPABASE_URL = "https://vydwqikwwilzgfvownpx.supabase.co";
+const FALLBACK_SUPABASE_PUBLISHABLE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5ZHdxaWt3d2lsemdmdm93bnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwODEyNzUsImV4cCI6MjA5NzY1NzI3NX0.OTNbJGd5_OqS2qIHmOCpJfxA7E5qMWueiOGzgKM0Zrg";
+
+function readEnv(name: string): string | undefined {
+  return process.env[name] || import.meta.env?.[name];
+}
+
 function build() {
-  const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const url = readEnv("SUPABASE_URL") || readEnv("VITE_SUPABASE_URL") || FALLBACK_SUPABASE_URL;
+  const serviceKey = readEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const publishableKey =
+    readEnv("SUPABASE_PUBLISHABLE_KEY") ||
+    readEnv("VITE_SUPABASE_PUBLISHABLE_KEY") ||
+    FALLBACK_SUPABASE_PUBLISHABLE_KEY;
   const key = serviceKey || publishableKey;
   if (!url || !key) {
     throw new Error(
